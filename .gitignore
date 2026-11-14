@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.claude/settings.local.json
+# QA working files stay out of the repo
+qa/
+screenshots/

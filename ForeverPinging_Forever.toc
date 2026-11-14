@@ -1,0 +1,13 @@
+## Interface: 16001
+## AllowLoadGameType: forever
+## Title: Forever Pinging
+## Notes: Builds a "target X, then ping it" macro and runs it from a real button.
+## Author: Quinn
+## Version: 0.1.0
+## SavedVariables: ForeverPingingDB
+## IconTexture: Interface\Icons\Ability_Hunter_MarkedForDeath
+
+Locales\enUS.lua
+Macro.lua
+Core.lua
+UI.lua
