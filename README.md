@@ -15,6 +15,11 @@ The default AddOns path is `C:\Program Files (x86)\World of Warcraft\_forever_\I
 Override it with `-AddOnsPath` or the `FOREVER_ADDONS` environment variable.
 TOC changes need a full client restart. Lua changes need `/reload`.
 
+## Updating for a new Forever patch
+
+Get the client's interface number with `/dump select(4, GetBuildInfo())`. Put it in
+`## Interface:` in the TOC, then restart the client.
+
 ## Unit tests
 
 ```powershell
