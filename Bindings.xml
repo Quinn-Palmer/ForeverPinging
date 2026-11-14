@@ -1,0 +1,6 @@
+<Bindings>
+	<!-- Auto-loaded by the client (not listed in the TOC). Shows up under
+	     Options > Keybindings > AddOns. A CLICK binding presses the secure
+	     Ping! button directly, so it's the same as clicking it. -->
+	<Binding name="CLICK ForeverPingingPingButton:LeftButton" header="FOREVERPINGING" category="ADDONS"/>
+</Bindings>

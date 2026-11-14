@@ -31,7 +31,18 @@ This syntax-checks every TOC-listed Lua file under Lua 5.1 and runs the `Macro.l
 
 ## Commands
 
-`/fp` toggles the window · `/fp reset` resets position and settings · `/fp debug` prints the current macrotext
+`/fp` toggles the window · `/fp macro` puts an action-bar macro on your cursor · `/fp reset` resets position and settings · `/fp debug` prints the current macrotext
+
+## Keybinding the ping
+
+Either way, the window still sets the name, ping type and options. The keybind just presses Ping!.
+
+- **Action bar:** `/fp macro` creates an account macro `FP Ping` (`/click ForeverPingingPingButton`)
+  and puts it on your cursor. Drop it on a bar slot and bind that slot as usual. Running it again
+  repairs the macro body if it was edited.
+- **Direct keybind:** Options → Keybindings → AddOns → Forever Pinging → "Ping! (target and ping)".
+
+Both work in combat (they're a click on the secure button) and with the window closed.
 
 ## Verify in-game (open questions from the spec)
 
@@ -46,5 +57,9 @@ This syntax-checks every TOC-listed Lua file under Lua 5.1 and runs the `Macro.l
   so a miss leaves no target and nothing is pinged.
 - **Return to previous target with a missed search.** `/targetlasttarget` may jump to an older
   target when nothing matched, or when combined with "Clear target if not found".
+- **Keybind / `/click`.** The button sets `useOnKeyDown = false` so it acts on release only.
+  Check that the bar macro and the Keybindings entry each ping exactly once, with
+  `ActionButtonUseKeyDown` both on and off (`/console ActionButtonUseKeyDown 0|1`), with the window
+  open and closed, and in combat. If the bar macro does nothing, try `/click ForeverPingingPingButton LeftButton 1`.
 - **Combat.** Inputs lock and Ping! still fires. `/fp`, `/fp reset` and the close button queue
   until combat ends.

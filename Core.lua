@@ -179,6 +179,52 @@ function ns.PrintDebug()
 end
 
 ---------------------------------------------------------------------------
+-- Keybinding / action bar
+---------------------------------------------------------------------------
+-- Labels for Bindings.xml. The client looks these up as globals by name,
+-- so they're the one unavoidable exception to "no globals".
+BINDING_HEADER_FOREVERPINGING = L.TITLE
+_G["BINDING_NAME_CLICK ForeverPingingPingButton:LeftButton"] = L.BINDING_PING
+
+ns.ACTION_MACRO_NAME = "FP Ping"      -- macro names max 16 chars
+ns.ACTION_MACRO_BODY = "/click ForeverPingingPingButton"
+local ACTION_MACRO_ICON = "Interface\\Icons\\Ability_Hunter_MarkedForDeath"
+
+-- Creates (or repairs) an account-wide macro that clicks the Ping! button,
+-- then puts it on the cursor so the player can drop it on an action bar.
+-- The macro only forwards a click; the name/options still come from the window.
+function ns.CreateActionMacro()
+    if InCombatLockdown() then
+        Print(L.MACRO_COMBAT)
+        return
+    end
+
+    local index = GetMacroIndexByName(ns.ACTION_MACRO_NAME)
+    if index and index > 0 then
+        EditMacro(index, nil, nil, ns.ACTION_MACRO_BODY)
+    else
+        local numAccount, numChar = GetNumMacros()
+        local perChar
+        if numAccount < (MAX_ACCOUNT_MACROS or 120) then
+            perChar = false
+        elseif numChar < (MAX_CHARACTER_MACROS or 30) then
+            perChar = true
+        else
+            Print(L.MACRO_FULL)
+            return
+        end
+        index = CreateMacro(ns.ACTION_MACRO_NAME, ACTION_MACRO_ICON, ns.ACTION_MACRO_BODY, perChar)
+        if not index or index == 0 then
+            Print(L.MACRO_FAILED)
+            return
+        end
+    end
+
+    PickupMacro(index)
+    Print(L.MACRO_READY:format(ns.ACTION_MACRO_NAME))
+end
+
+---------------------------------------------------------------------------
 -- Slash commands
 ---------------------------------------------------------------------------
 SLASH_FOREVERPINGING1 = "/fp"
@@ -191,6 +237,8 @@ SlashCmdList.FOREVERPINGING = function(msg)
         ns.Reset()
     elseif cmd == "debug" then
         ns.PrintDebug()
+    elseif cmd == "macro" then
+        ns.CreateActionMacro()
     else
         Print(L.HELP)
     end

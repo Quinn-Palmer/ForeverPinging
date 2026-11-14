@@ -77,6 +77,8 @@ switch ($Mode) {
         $files = @($TocName) + (Get-Content -LiteralPath $toc |
             Where-Object { $_ -match '\S' -and $_ -notmatch '^\s*#' } |
             ForEach-Object { ($_ -replace '\s*\[.*$', '').Trim() })
+        # Bindings.xml is auto-loaded by the client, so it isn't in the TOC.
+        if (Test-Path -LiteralPath (Join-Path $RepoRoot 'Bindings.xml')) { $files += 'Bindings.xml' }
         foreach ($rel in $files) {
             $src = Join-Path $RepoRoot $rel
             if (-not (Test-Path -LiteralPath $src)) { throw "TOC lists a missing file: $rel" }

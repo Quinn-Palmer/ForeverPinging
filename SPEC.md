@@ -36,12 +36,16 @@ Ping line: `/ping [@target,exists]` plus type, e.g. `/ping [@target,exists] atta
 
 ## Commands
 - `/fp` toggle window · `/fp reset` reset position/settings · `/fp debug` print current macrotext
+- `/fp macro` create/repair account macro `FP Ping` (`/click ForeverPingingPingButton`) and put it on the cursor for the action bar
+
+## Keybinding
+- `Bindings.xml` CLICK binding on `ForeverPingingPingButton` → Keybindings > AddOns
+- Ping! button acts on release only (`useOnKeyDown = false`) so mouse, keybind and `/click` each fire once
 
 ## Saved settings (`ForeverPingingDB`)
 `dbVersion, name, pingType, options{...}, optionsExpanded, position`
 
 ## Later (not v0.1)
 - Saved list of target names / presets
-- Keybinding for the Ping! button (Bindings.xml / `SetBindingClick`)
 - Optional: export to a real WoW macro
 - Edit Mode integration

@@ -165,8 +165,12 @@ local function CreateMain()
     pingBtn:SetSize(100, ROW_H + 2)
     pingBtn:SetPoint("TOPRIGHT", -PAD, -59)
     pingBtn:SetText(L.PING)
-    -- Both edges, so the click fires whichever way ActionButtonUseKeyDown is set.
+    -- Both edges are registered, but useOnKeyDown=false makes the template act
+    -- only on release. That way a mouse click, a keybind (Bindings.xml CLICK
+    -- binding) and "/click ForeverPingingPingButton" (which sends an up-click)
+    -- each fire exactly once, whatever ActionButtonUseKeyDown is set to.
     pingBtn:RegisterForClicks("AnyUp", "AnyDown")
+    pingBtn:SetAttribute("useOnKeyDown", false)
     pingBtn:SetAttribute("type", "macro")
     pingBtn:SetAttribute("macrotext", "")
     pingBtn:Disable()

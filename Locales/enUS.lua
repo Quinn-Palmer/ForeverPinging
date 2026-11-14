@@ -55,4 +55,11 @@ L.TARGET_COMBAT = "Can't change the name in combat."
 L.RESET_DONE = "Position and settings reset."
 L.DEBUG_HEADER = "Current macrotext (%d chars):"
 L.DEBUG_EMPTY = "Macro is empty (no name set)."
-L.HELP = "Commands: /fp (toggle window), /fp reset (reset position and settings), /fp debug (print current macro)"
+L.HELP = "Commands: /fp (toggle window), /fp macro (action bar macro), /fp reset (reset position and settings), /fp debug (print current macro)"
+
+-- Keybinding / action bar macro
+L.BINDING_PING = "Ping! (target and ping)"
+L.MACRO_READY = "Macro \"%s\" is on your cursor. Drop it on an action bar and keybind that slot. You can also bind Ping! directly under Keybindings > AddOns."
+L.MACRO_COMBAT = "Can't create macros in combat. Try again after combat."
+L.MACRO_FULL = "Your macro slots are full. Free one up, or bind Ping! under Keybindings > AddOns instead."
+L.MACRO_FAILED = "Couldn't create the macro."
