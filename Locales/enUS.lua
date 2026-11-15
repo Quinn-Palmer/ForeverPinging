@@ -18,9 +18,19 @@ L.QUEST_NONE = "No unfinished kill objectives"
 L.QUEST_MORE_ELSEWHERE = "+%d in other zones"
 L.QUEST_API_MISSING = "Quest log API not available"
 L.PING = "Ping!"
-L.PING_TOOLTIP_BODY = "Targets the name, then pings it."
+L.PING_TOOLTIP_BODY = "Targets the name, pings it (unless the ping type is No ping), then casts your chosen attack (if any)."
 L.OPTIONS_COLLAPSED = "Options +"
 L.OPTIONS_EXPANDED = "Options -"
+
+-- Attack (cast after the ping)
+L.ATTACK = "Attack"
+L.ATTACK_TOOLTIP_BODY = "Optional spell to cast at the target right after the ping. Saved per class. Only instant abilities make sense here: a cast-time spell would start casting at the target."
+L.ATTACK_NONE = "No attack"
+L.ATTACK_SELECTED = "Attack: %s"
+L.ATTACK_NOT_LEARNED = "Not learned yet"
+L.ATTACK_CUSTOM = "Custom spell..."
+L.ATTACK_CUSTOM_SET = "Custom: %s"
+L.ATTACK_CUSTOM_PROMPT = "Spell to cast after the ping (exact spell name, as in your spellbook). Leave empty for none."
 
 -- Ping types
 L.PING_default = "Default"
@@ -28,6 +38,7 @@ L.PING_attack = "Attack"
 L.PING_assist = "Assist"
 L.PING_warning = "Warning"
 L.PING_onmyway = "On My Way"
+L.PING_none = "No ping (target only)"
 
 -- Options
 L.OPT_exactMatch = "Exact name match"

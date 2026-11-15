@@ -27,7 +27,7 @@ pip install lupa
 python tests/run_tests.py
 ```
 
-This syntax-checks every TOC-listed Lua file under Lua 5.1 and runs the `Macro.lua` and `QuestMobs.lua` tests.
+This syntax-checks every TOC-listed Lua file under Lua 5.1 and runs the `Macro.lua`, `QuestMobs.lua` and `Abilities.lua` tests.
 
 ## Commands
 
@@ -35,7 +35,7 @@ This syntax-checks every TOC-listed Lua file under Lua 5.1 and runs the `Macro.l
 
 ## Keybinding the ping
 
-Either way, the window still sets the name, ping type and options. The keybind just presses Ping!.
+Either way, the window still sets the name, ping type, attack and options. The keybind just presses Ping!.
 
 - **Action bar:** `/fp macro` creates an account macro `FP Ping` (`/click ForeverPingingPingButton`)
   and puts it on your cursor. Drop it on a bar slot and bind that slot as usual. Running it again
@@ -65,5 +65,11 @@ Both work in combat (they're a click on the secure button) and with the window c
   real text format (the parser handles `X slain: 3/8` and `3/8 X slain`). Check that `C_QuestLog.IsOnMap`
   filters to the current zone, that the quest icon texture shows, and that `MenuUtil.CreateContextMenu`
   opens the menu.
+- **Attack list.** The spell IDs in `Abilities.lua` are Classic rank 1 IDs. For each class, check
+  that the menu shows real names (`/dump C_Spell.GetSpellName(8050)` should say Flame Shock), that
+  learned spells aren't greyed (`/dump IsPlayerSpell(8050)`), and that `/cast Flame Shock` with no rank
+  uses the highest rank. Also check whether Forever changed any cast times (Corruption, Multi-Shot, Exorcism).
+- **Attack in the macro.** One press should target, ping and cast. Check the `[@target,harm,nodead]`
+  conditional skips friendlies and corpses, and that `/cast !Auto Shot` doesn't toggle Auto Shot off.
 - **Combat.** Inputs lock and Ping! still fires. `/fp`, `/fp reset` and the close button queue
   until combat ends.

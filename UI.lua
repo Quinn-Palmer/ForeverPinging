@@ -14,7 +14,7 @@ ns.UI = UI
 
 local WIDTH = 290
 local QUEST_BTN = 22
-local MAIN_HEIGHT = 112
+local MAIN_HEIGHT = 142
 local PAD = 10
 local ROW_H = 22
 
@@ -25,7 +25,7 @@ local BACKDROP = {
     insets = { left = 4, right = 4, top = 4, bottom = 4 },
 }
 
-local main, nameBox, questBtn, useTargetBtn, pingTypeDD, pingBtn, optionsToggle, statusText
+local main, nameBox, questBtn, useTargetBtn, pingTypeDD, attackDD, pingBtn, optionsToggle, statusText
 local optionsPanel, markerDD
 local checkboxes = {}   -- key -> { button, label }
 local locked = false
@@ -99,6 +99,69 @@ local function BuildQuestMenu(_, root)
 
     -- Safety net if "All zones" is on with a full quest log.
     if root.SetScrollMode then root:SetScrollMode(300) end
+end
+
+-- Custom attack: any spell name the player types (for spells not in the list).
+StaticPopupDialogs.FOREVERPINGING_CUSTOM_ATTACK = {
+    text = L.ATTACK_CUSTOM_PROMPT,
+    button1 = ACCEPT,
+    button2 = CANCEL,
+    hasEditBox = true,
+    maxLetters = 64,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    OnShow = function(self)
+        local eb = self.GetEditBox and self:GetEditBox() or self.editBox
+        local choice = ns.GetAttackChoice()
+        eb:SetText(type(choice) == "string" and choice or "")
+        eb:HighlightText()
+        eb:SetFocus()
+    end,
+    OnAccept = function(self)
+        local eb = self.GetEditBox and self:GetEditBox() or self.editBox
+        ns.SetAttack(eb:GetText())
+    end,
+    EditBoxOnEnterPressed = function(self)
+        ns.SetAttack(self:GetText())
+        self:GetParent():Hide()
+    end,
+    EditBoxOnEscapePressed = function(self)
+        self:GetParent():Hide()
+    end,
+}
+
+-- Attack menu: none, this class's instant attacks (unlearned ones greyed but
+-- still selectable), then a custom spell name.
+local function BuildAttackMenu(_, root)
+    root:CreateRadio(L.ATTACK_NONE,
+        function() return ns.GetAttackChoice() == nil end,
+        function() ns.SetAttack(nil) end)
+
+    for _, entry in ipairs(ns.Abilities.ForClass(ns.playerClass)) do
+        local name = ns.GetAbilityName(entry)
+        local known = ns.IsSpellKnown(entry.id)
+        local label = known and name or ("|cff808080%s|r"):format(name)
+        local radio = root:CreateRadio(label,
+            function() return ns.GetAttackChoice() == entry.id end,
+            function() ns.SetAttack(entry.id) end)
+        if radio.SetTooltip and (entry.note or not known) then
+            radio:SetTooltip(function(tooltip)
+                tooltip:SetText(name)
+                if entry.note then tooltip:AddLine(entry.note, 1, 1, 1, true) end
+                if not known then tooltip:AddLine(L.ATTACK_NOT_LEARNED, 1, 0.3, 0.3, true) end
+            end)
+        end
+    end
+
+    root:CreateDivider()
+    local choice = ns.GetAttackChoice()
+    local customLabel = type(choice) == "string" and L.ATTACK_CUSTOM_SET:format(choice) or L.ATTACK_CUSTOM
+    root:CreateRadio(customLabel,
+        function() return type(ns.GetAttackChoice()) == "string" end,
+        function() StaticPopup_Show("FOREVERPINGING_CUSTOM_ATTACK") end)
+
+    if root.SetScrollMode then root:SetScrollMode(400) end
 end
 
 local function CreatePanel(name, parent)
@@ -222,6 +285,21 @@ local function CreateMain()
         end
     end)
 
+    -- Row 3: attack cast after the ping
+    attackDD = CreateFrame("DropdownButton", nil, main, "WowStyle1DropdownTemplate")
+    attackDD:SetWidth(WIDTH - PAD * 2)
+    attackDD:SetPoint("TOPLEFT", PAD, -88)
+    attackDD:SetupMenu(BuildAttackMenu)
+    if attackDD.SetSelectionTranslator then
+        attackDD:SetSelectionTranslator(function(selection)
+            local choice = ns.GetAttackChoice()
+            if choice == nil then return L.ATTACK_NONE end
+            if type(choice) == "string" then return L.ATTACK_SELECTED:format(choice) end
+            return L.ATTACK_SELECTED:format(selection.text)
+        end)
+    end
+    SetTooltip(attackDD, L.ATTACK, L.ATTACK_TOOLTIP_BODY)
+
     -- The secure button. Its click runs the macrotext; addon code never
     -- targets or pings directly.
     pingBtn = CreateFrame("Button", "ForeverPingingPingButton", main,
@@ -240,7 +318,7 @@ local function CreateMain()
     pingBtn:Disable()
     SetTooltip(pingBtn, L.PING, L.PING_TOOLTIP_BODY)
 
-    -- Row 3: options toggle + status
+    -- Bottom row: options toggle + status
     optionsToggle = CreateFrame("Button", nil, main, "UIPanelButtonTemplate")
     optionsToggle:SetSize(90, 20)
     optionsToggle:SetPoint("BOTTOMLEFT", PAD, PAD)
@@ -337,8 +415,14 @@ function UI.Refresh()
         cb.button:SetChecked(ns.db.options[key] and true or false)
     end
     pingTypeDD:GenerateMenu()
+    attackDD:GenerateMenu()
     markerDD:GenerateMenu()
     UI.UpdateOptionsShown()
+end
+
+-- Re-reads the attack choice into the dropdown text (after the custom popup).
+function UI.RefreshAttack()
+    if attackDD then attackDD:GenerateMenu() end
 end
 
 function UI.ApplyShown()
@@ -376,6 +460,8 @@ function UI.SetCombatLocked(isLocked)
     questBtn:SetEnabled(enabled)
     questBtn:SetAlpha(enabled and 1 or 0.4)
     pingTypeDD:SetEnabled(enabled)
+    attackDD:SetEnabled(enabled)
+    if isLocked then StaticPopup_Hide("FOREVERPINGING_CUSTOM_ATTACK") end
     markerDD:SetEnabled(enabled)
     for _, cb in pairs(checkboxes) do
         cb.button:SetEnabled(enabled)

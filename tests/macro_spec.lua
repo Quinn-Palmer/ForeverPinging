@@ -119,6 +119,58 @@ test("everything on stays under 255 chars with a normal name", function()
     eq(Macro.IsTooLong(text), false)
 end)
 
+test("attack is cast after the ping", function()
+    eq(Macro.Build(settings({ pingType = "attack" }), "Flame Shock"),
+        "/targetexact Night Watch Guard\n/ping [@target,exists] 1\n/cast [@target,harm,nodead] Flame Shock")
+end)
+
+test("attack goes before return to previous target", function()
+    eq(Macro.Build(settings({ options = { returnToPrevious = true } }), "Flame Shock"),
+        "/targetexact Night Watch Guard\n/ping [@target,exists]\n"
+        .. "/cast [@target,harm,nodead] Flame Shock\n/targetlasttarget")
+end)
+
+test("toggle prefix is kept", function()
+    eq(Macro.Build(settings(), "!Auto Shot"),
+        "/targetexact Night Watch Guard\n/ping [@target,exists]\n/cast [@target,harm,nodead] !Auto Shot")
+end)
+
+test("empty, whitespace, bare ! or non-string attack adds nothing", function()
+    for _, a in ipairs({ "", "   ", "!", false }) do
+        eq(Macro.Build(settings(), a), "/targetexact Night Watch Guard\n/ping [@target,exists]")
+    end
+    eq(Macro.Build(settings(), nil), "/targetexact Night Watch Guard\n/ping [@target,exists]")
+end)
+
+test("attack name can't inject lines", function()
+    eq(Macro.Build(settings(), "Flame Shock\n/dance"),
+        "/targetexact Night Watch Guard\n/ping [@target,exists]\n/cast [@target,harm,nodead] Flame Shock /dance")
+end)
+
+test("no name means no macro even with an attack", function()
+    eq(Macro.Build(settings({ name = "" }), "Flame Shock"), "")
+end)
+
+test("everything on plus the longest listed attack stays under 255", function()
+    local text = Macro.Build(settings({
+        name = "Defias Pillager Lieutenant",
+        pingType = "attack",
+        options = { skipDead = true, enemiesOnly = true, clearIfNotFound = true,
+            returnToPrevious = true, raidMarker = 8 },
+    }), "Curse of Recklessness")
+    eq(Macro.IsTooLong(text), false)
+end)
+
+test("no ping leaves out the ping line", function()
+    eq(Macro.Build(settings({ pingType = "none" })), "/targetexact Night Watch Guard")
+end)
+
+test("no ping still marks, attacks and returns", function()
+    eq(Macro.Build(settings({ pingType = "none", options = { raidMarker = 8, returnToPrevious = true } }), "Flame Shock"),
+        "/targetexact Night Watch Guard\n/tm [@target,exists] 8\n"
+        .. "/cast [@target,harm,nodead] Flame Shock\n/targetlasttarget")
+end)
+
 test("IsTooLong boundary", function()
     eq(Macro.IsTooLong(string.rep("a", 255)), false)
     eq(Macro.IsTooLong(string.rep("a", 256)), true)
@@ -127,6 +179,7 @@ end)
 test("IsValidPingType", function()
     eq(Macro.IsValidPingType("default"), true)
     eq(Macro.IsValidPingType("attack"), true)
+    eq(Macro.IsValidPingType("none"), true)
     eq(Macro.IsValidPingType("nope"), false)
     eq(Macro.IsValidPingType(nil), false)
 end)

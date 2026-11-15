@@ -13,8 +13,9 @@ A small window that builds a "target X, then ping it" macro and runs it from a r
 - **Use Current Target** button → fills Name with `UnitName("target")` (out of combat; guard against secret values)
 - **Quest mobs** icon button (between Name and Use Current Target) → opens a menu of mob names from
   the quest log; picking one fills Name (see below)
-- **Ping type** dropdown: Default (contextual), Attack, Assist, Warning, On My Way
+- **Ping type** dropdown: Default (contextual), Attack, Assist, Warning, On My Way, No ping (target only: drops the `/ping` line; marker and attack still apply)
 - **Ping!** button → secure action button running the generated macrotext
+- **Attack** dropdown (full-width row under Ping type) → optional spell cast at the target after the ping (see below)
 - **Options ▸** toggle that expands/collapses the options panel (collapsed by default, state remembered)
 
 ## Options panel (collapsible)
@@ -29,6 +30,20 @@ A small window that builds a "target X, then ping it" macro and runs it from a r
 | Raid marker | off (dropdown: none/star/…/skull) | `/tm [@target,exists] N` |
 
 Ping line: `/ping [@target,exists]` plus type, e.g. `/ping [@target,exists] attack` — **confirm exact ping-type syntax in Forever**.
+
+## Attack (cast after the ping)
+Adds `/cast [@target,harm,nodead] <spell>` after the ping line (before `/targetlasttarget`), so
+one press of Ping! / the keybind / the bar macro targets, pings and attacks.
+- List per class in `Abilities.lua`: instant, enemy-targeted abilities only (a cast-time spell
+  would just start casting). Entries are Classic rank 1 spell IDs; the name is resolved with
+  `C_Spell.GetSpellName` so it's localized, and `/cast` by name uses the highest known rank.
+- Unlearned abilities are greyed with a "Not learned yet" tooltip but still selectable. Notes
+  (stance/form/talent) show in the tooltip.
+- **Custom spell...** opens a popup for any spell name not in the list.
+- Auto-repeat abilities (Auto Shot, wand Shoot) use `/cast !Name` so a second press doesn't stop them.
+- Saved per class in `attackByClass[classFile]` (spell ID or custom name); SavedVariables are
+  account-wide, so a shaman's Flame Shock doesn't leak onto a warrior.
+- Only one GCD ability per press; `/ping` is off the GCD so it never blocks the cast.
 
 ## Quest mobs menu
 Built on open from `C_QuestLog.GetQuestObjectives`; parsing lives in `QuestMobs.lua` (pure, unit-tested).
@@ -55,7 +70,7 @@ Built on open from `C_QuestLog.GetQuestObjectives`; parsing lives in `QuestMobs.
 - Ping! button acts on release only (`useOnKeyDown = false`) so mouse, keybind and `/click` each fire once
 
 ## Saved settings (`ForeverPingingDB`)
-`dbVersion, name, pingType, options{...}, optionsExpanded, questMobsAllZones, position`
+`dbVersion, name, pingType, options{...}, optionsExpanded, questMobsAllZones, attackByClass{...}, position`
 
 ## Later (not v0.1)
 - Saved list of target names / presets

@@ -14,17 +14,20 @@ Macro.MAX_LENGTH = 255
 -- (1 attack, 2 warning, 3 on my way, 4 assist). Numbers are used instead of
 -- words because the word forms resolve through localized globals and only
 -- match on English clients. nil = contextual (no type argument).
+-- noPing = leave out the /ping line (target, mark and attack only).
 Macro.PING_TYPES = {
     { key = "default", arg = nil },
     { key = "attack", arg = "1" },
     { key = "assist", arg = "4" },
     { key = "warning", arg = "2" },
     { key = "onmyway", arg = "3" },
+    { key = "none", noPing = true },
 }
 
-local PING_ARG = {}
+local PING_ARG, NO_PING = {}, {}
 for _, pt in ipairs(Macro.PING_TYPES) do
     PING_ARG[pt.key] = pt.arg or false
+    NO_PING[pt.key] = pt.noPing or nil
 end
 
 -- Raid markers: 0 = none, 1..8 = star..skull (the /tm index).
@@ -45,7 +48,10 @@ function Macro.IsValidPingType(key)
 end
 
 -- Returns the macrotext, or "" when there is no name to target.
-function Macro.Build(settings)
+-- attackName (optional) is the already-resolved, localized spell to cast at the
+-- target after pinging; Core works it out from the per-class choice. A leading
+-- "!" (auto-repeat abilities) is kept so a second press doesn't toggle it off.
+function Macro.Build(settings, attackName)
     settings = settings or {}
     local name = Macro.CleanName(settings.name)
     if name == "" then
@@ -81,12 +87,20 @@ function Macro.Build(settings)
         add("/tm [@target,exists] " .. marker)
     end
 
-    local ping = "/ping [@target,exists]"
-    local arg = PING_ARG[settings.pingType]
-    if arg then
-        ping = ping .. " " .. arg
+    if not NO_PING[settings.pingType] then
+        local ping = "/ping [@target,exists]"
+        local arg = PING_ARG[settings.pingType]
+        if arg then
+            ping = ping .. " " .. arg
+        end
+        add(ping)
     end
-    add(ping)
+
+    -- [harm,nodead] keeps the cast off friendlies, corpses and yourself.
+    local attack = Macro.CleanName(attackName)
+    if attack ~= "" and attack ~= "!" then
+        add("/cast [@target,harm,nodead] " .. attack)
+    end
 
     if o.returnToPrevious then
         add("/targetlasttarget")

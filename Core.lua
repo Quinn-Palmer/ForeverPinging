@@ -20,6 +20,9 @@ ns.DEFAULTS = {
     },
     optionsExpanded = false,
     questMobsAllZones = false,   -- quest mob menu: false = current zone only
+    -- Attack cast after the ping, per class (SavedVariables are account-wide):
+    -- classFile -> spell ID from Abilities.lua, or a custom spell name string.
+    attackByClass = {},
     shown = true,
     -- position = { point, relativePoint, x, y } (nil = default spot)
 }
@@ -55,6 +58,15 @@ local function Sanitize(db)
     if db.options.enemiesOnly and db.options.friendliesOnly then
         db.options.friendliesOnly = false
     end
+    for class, choice in pairs(db.attackByClass) do
+        local t = type(choice)
+        if t == "string" then
+            choice = ns.Macro.CleanName(choice)
+            db.attackByClass[class] = choice ~= "" and choice or nil
+        elseif t ~= "number" then
+            db.attackByClass[class] = nil
+        end
+    end
 end
 
 ---------------------------------------------------------------------------
@@ -88,12 +100,72 @@ local function FlushQueue()
 end
 
 ---------------------------------------------------------------------------
+-- Attack (spell cast after the ping), stored per class
+---------------------------------------------------------------------------
+-- Set on ADDON_LOADED. "UNKNOWN" keeps the table key valid if UnitClass fails.
+ns.playerClass = "UNKNOWN"
+
+function ns.GetAttackChoice()
+    return ns.db.attackByClass[ns.playerClass]
+end
+
+-- choice: spell ID from Abilities.lua, custom name string, or nil for none.
+function ns.SetAttack(choice)
+    if type(choice) == "string" then
+        choice = ns.Macro.CleanName(choice)
+        if choice == "" then choice = nil end
+    end
+    ns.db.attackByClass[ns.playerClass] = choice
+    ns.UI.RefreshAttack()
+    ns.OnSettingsChanged()
+end
+
+-- Localized spell name for an ID, or nil if the client doesn't know it.
+function ns.GetSpellName(id)
+    if C_Spell and C_Spell.GetSpellName then
+        return C_Spell.GetSpellName(id)
+    elseif GetSpellInfo then
+        return (GetSpellInfo(id))
+    end
+end
+
+function ns.IsSpellKnown(id)
+    if IsPlayerSpell then
+        return IsPlayerSpell(id) and true or false
+    elseif C_SpellBook and C_SpellBook.IsSpellKnown then
+        return C_SpellBook.IsSpellKnown(id) and true or false
+    end
+    return true
+end
+
+-- Display name for a list entry (localized when possible).
+function ns.GetAbilityName(entry)
+    return ns.GetSpellName(entry.id) or entry.name
+end
+
+-- The name the macro casts, or nil when no attack is chosen.
+function ns.GetAttackName()
+    local choice = ns.GetAttackChoice()
+    if type(choice) == "string" then
+        return choice
+    elseif type(choice) == "number" then
+        local entry = ns.Abilities.Find(ns.playerClass, choice)
+        local name = ns.GetSpellName(choice) or (entry and entry.name)
+        if name and entry and entry.toggle then
+            name = "!" .. name
+        end
+        return name
+    end
+    return nil
+end
+
+---------------------------------------------------------------------------
 -- Macro
 ---------------------------------------------------------------------------
 local wasTooLong = false
 
 function ns.Rebuild()
-    local text = ns.Macro.Build(ns.db)
+    local text = ns.Macro.Build(ns.db, ns.GetAttackName())
     ns.macrotext = text
 
     local tooLong = ns.Macro.IsTooLong(text)
@@ -288,6 +360,7 @@ local events = CreateFrame("Frame")
 events:RegisterEvent("ADDON_LOADED")
 events:RegisterEvent("PLAYER_REGEN_DISABLED")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
+events:RegisterEvent("SPELLS_CHANGED")
 
 events:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then
@@ -302,6 +375,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
         MergeDefaults(db, ns.DEFAULTS)
         Sanitize(db)
         ns.db = db
+        ns.playerClass = select(2, UnitClass("player")) or "UNKNOWN"
 
         ns.UI.Create()
         ns.UI.Refresh()
@@ -320,6 +394,16 @@ events:SetScript("OnEvent", function(_, event, arg1)
         ns.UI.SetCombatLocked(false)
         if ranQueued then
             Print(L.QUEUE_APPLIED)
+        end
+
+    elseif event == "SPELLS_CHANGED" then
+        -- Spell names can resolve late on first login; only rebuild if the
+        -- cast line would actually change (this event fires often).
+        if ns.db then
+            local text = ns.Macro.Build(ns.db, ns.GetAttackName())
+            if text ~= ns.macrotext then
+                ns.Rebuild()
+            end
         end
     end
 end)

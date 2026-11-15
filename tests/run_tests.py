@@ -37,12 +37,12 @@ def main():
     # Load the pure modules the way WoW does: chunk called with (addonName, ns).
     ns = lua.table()
     lua.execute("function __load(src, name, ...) return assert(loadstring(src, name))(...) end")
-    for module in ("Macro", "QuestMobs"):
+    for module in ("Macro", "QuestMobs", "Abilities"):
         lua.globals().__load((ROOT / f"{module}.lua").read_text(encoding="utf-8"), f"@{module}.lua", "ForeverPinging", ns)
         lua.globals()[module] = ns[module]
 
     total_failed = 0
-    for spec in ("macro_spec.lua", "questmobs_spec.lua"):
+    for spec in ("macro_spec.lua", "questmobs_spec.lua", "abilities_spec.lua"):
         print(f"\n== {spec}", flush=True)
         total_failed += lua.globals().__load((ROOT / "tests" / spec).read_text(encoding="utf-8"), "@" + spec) or 0
     return 1 if total_failed else 0
