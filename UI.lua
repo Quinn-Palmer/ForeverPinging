@@ -14,7 +14,7 @@ ns.UI = UI
 
 local WIDTH = 290
 local QUEST_BTN = 22
-local MAIN_HEIGHT = 142
+local MAIN_HEIGHT = 112
 local PAD = 10
 local ROW_H = 22
 
@@ -285,21 +285,6 @@ local function CreateMain()
         end
     end)
 
-    -- Row 3: attack cast after the ping
-    attackDD = CreateFrame("DropdownButton", nil, main, "WowStyle1DropdownTemplate")
-    attackDD:SetWidth(WIDTH - PAD * 2)
-    attackDD:SetPoint("TOPLEFT", PAD, -88)
-    attackDD:SetupMenu(BuildAttackMenu)
-    if attackDD.SetSelectionTranslator then
-        attackDD:SetSelectionTranslator(function(selection)
-            local choice = ns.GetAttackChoice()
-            if choice == nil then return L.ATTACK_NONE end
-            if type(choice) == "string" then return L.ATTACK_SELECTED:format(choice) end
-            return L.ATTACK_SELECTED:format(selection.text)
-        end)
-    end
-    SetTooltip(attackDD, L.ATTACK, L.ATTACK_TOOLTIP_BODY)
-
     -- The secure button. Its click runs the macrotext; addon code never
     -- targets or pings directly.
     pingBtn = CreateFrame("Button", "ForeverPingingPingButton", main,
@@ -388,6 +373,26 @@ local function CreateOptions()
                 end)
         end
     end)
+
+    -- Attack cast after the ping (the "Attack" label replaces a text prefix).
+    y = y - 30
+    local attackLabel = optionsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    attackLabel:SetPoint("TOPLEFT", PAD + 2, y - 8)
+    attackLabel:SetText(L.ATTACK)
+
+    attackDD = CreateFrame("DropdownButton", nil, optionsPanel, "WowStyle1DropdownTemplate")
+    attackDD:SetWidth(180)
+    attackDD:SetPoint("TOPRIGHT", -PAD, y - 2)
+    attackDD:SetupMenu(BuildAttackMenu)
+    if attackDD.SetSelectionTranslator then
+        attackDD:SetSelectionTranslator(function(selection)
+            local choice = ns.GetAttackChoice()
+            if choice == nil then return L.ATTACK_NONE end
+            if type(choice) == "string" then return choice end
+            return selection.text
+        end)
+    end
+    SetTooltip(attackDD, L.ATTACK, L.ATTACK_TOOLTIP_BODY)
 
     optionsPanel:SetHeight(-(y - 2) + 28 + PAD)
     optionsPanel:Hide()

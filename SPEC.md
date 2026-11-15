@@ -15,7 +15,6 @@ A small window that builds a "target X, then ping it" macro and runs it from a r
   the quest log; picking one fills Name (see below)
 - **Ping type** dropdown: Default (contextual), Attack, Assist, Warning, On My Way, No ping (target only: drops the `/ping` line; marker and attack still apply)
 - **Ping!** button → secure action button running the generated macrotext
-- **Attack** dropdown (full-width row under Ping type) → optional spell cast at the target after the ping (see below)
 - **Options ▸** toggle that expands/collapses the options panel (collapsed by default, state remembered)
 
 ## Options panel (collapsible)
@@ -28,6 +27,7 @@ A small window that builds a "target X, then ping it" macro and runs it from a r
 | Clear target if not found | off | behaviour TBD — targeting by name keeps old target on no match; investigate |
 | Return to previous target | off | append `/targetlasttarget` after ping |
 | Raid marker | off (dropdown: none/star/…/skull) | `/tm [@target,exists] N` |
+| Attack | None (dropdown: class abilities / Custom spell...) | `/cast [@target,harm,nodead] <spell>` after the ping (see below) |
 
 Ping line: `/ping [@target,exists]` plus type, e.g. `/ping [@target,exists] attack` — **confirm exact ping-type syntax in Forever**.
 
