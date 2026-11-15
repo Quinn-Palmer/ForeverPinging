@@ -9,5 +9,6 @@
 
 Locales\enUS.lua
 Macro.lua
+QuestMobs.lua
 Core.lua
 UI.lua

@@ -12,7 +12,8 @@ local L = ns.L
 local UI = {}
 ns.UI = UI
 
-local WIDTH = 270
+local WIDTH = 290
+local QUEST_BTN = 22
 local MAIN_HEIGHT = 112
 local PAD = 10
 local ROW_H = 22
@@ -24,7 +25,7 @@ local BACKDROP = {
     insets = { left = 4, right = 4, top = 4, bottom = 4 },
 }
 
-local main, nameBox, useTargetBtn, pingTypeDD, pingBtn, optionsToggle, statusText
+local main, nameBox, questBtn, useTargetBtn, pingTypeDD, pingBtn, optionsToggle, statusText
 local optionsPanel, markerDD
 local checkboxes = {}   -- key -> { button, label }
 local locked = false
@@ -44,6 +45,60 @@ local function SetTooltip(frame, title, body)
         GameTooltip:Show()
     end)
     frame:SetScript("OnLeave", GameTooltip_Hide)
+end
+
+-- Fills the name box (Use Target, quest mob menu). Out of combat only.
+local function SetName(name)
+    if InCombatLockdown() then
+        ns.Print(L.TARGET_COMBAT)
+        return
+    end
+    ns.db.name = name
+    nameBox:SetText(name)
+    nameBox:SetCursorPosition(0)
+    nameBox:ClearFocus()
+    ns.OnSettingsChanged()
+end
+
+-- Quest mob menu: unfinished kill objectives, current zone by default so it
+-- stays short. "All zones" is a checkbox inside the menu itself.
+local function BuildQuestMenu(_, root)
+    root:CreateTitle(L.QUEST_MOBS)
+    local mobs, hidden = ns.GetQuestMobs(ns.db.questMobsAllZones)
+    if not mobs then
+        root:CreateTitle(hidden)   -- reason
+        return
+    end
+
+    if #mobs == 0 then
+        root:CreateTitle(ns.db.questMobsAllZones and L.QUEST_NONE or L.QUEST_NONE_HERE)
+    end
+    for _, mob in ipairs(mobs) do
+        local label = mob.name
+        if mob.numRequired and mob.numRequired > 0 then
+            label = ("%s |cff999999%d/%d|r"):format(mob.name, mob.numFulfilled or 0, mob.numRequired)
+        end
+        local item = root:CreateButton(label, function() SetName(mob.name) end)
+        if item.SetTooltip then
+            item:SetTooltip(function(tooltip)
+                tooltip:SetText(mob.name)
+                for _, title in ipairs(mob.quests) do
+                    tooltip:AddLine(title, 1, 1, 1)
+                end
+            end)
+        end
+    end
+    if hidden > 0 then
+        root:CreateTitle(L.QUEST_MORE_ELSEWHERE:format(hidden))
+    end
+
+    root:CreateDivider()
+    root:CreateCheckbox(L.QUEST_ALL_ZONES,
+        function() return ns.db.questMobsAllZones end,
+        function() ns.db.questMobsAllZones = not ns.db.questMobsAllZones end)
+
+    -- Safety net if "All zones" is on with a full quest log.
+    if root.SetScrollMode then root:SetScrollMode(300) end
 end
 
 local function CreatePanel(name, parent)
@@ -113,7 +168,7 @@ local function CreateMain()
 
     -- Row 1: name box + Use Target
     nameBox = CreateFrame("EditBox", nil, main, "InputBoxTemplate")
-    nameBox:SetSize(WIDTH - PAD * 2 - 100 - 6, ROW_H)
+    nameBox:SetSize(WIDTH - PAD * 2 - 100 - 6 - QUEST_BTN - 4, ROW_H)
     nameBox:SetPoint("TOPLEFT", PAD + 6, -32)   -- InputBoxTemplate's left art sits outside the box
     nameBox:SetAutoFocus(false)
     nameBox:SetMaxLetters(48)
@@ -136,12 +191,21 @@ local function CreateMain()
             ns.Print(reason)
             return
         end
-        ns.db.name = name
-        nameBox:SetText(name)
-        nameBox:ClearFocus()
-        ns.OnSettingsChanged()
+        SetName(name)
     end)
     SetTooltip(useTargetBtn, L.USE_TARGET_TOOLTIP, L.USE_TARGET_TOOLTIP_BODY)
+
+    -- Quest mob picker, between the name box and Use Target.
+    questBtn = CreateFrame("Button", nil, main)
+    questBtn:SetSize(QUEST_BTN, QUEST_BTN)
+    questBtn:SetPoint("RIGHT", useTargetBtn, "LEFT", -4, 0)
+    questBtn:SetNormalTexture("Interface\\GossipFrame\\AvailableQuestIcon")
+    questBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    questBtn:SetScript("OnClick", function(self)
+        if InCombatLockdown() then return end
+        MenuUtil.CreateContextMenu(self, BuildQuestMenu)
+    end)
+    SetTooltip(questBtn, L.QUEST_MOBS, L.QUEST_MOBS_TOOLTIP_BODY)
 
     -- Row 2: ping type + Ping!
     pingTypeDD = CreateFrame("DropdownButton", nil, main, "WowStyle1DropdownTemplate")
@@ -309,6 +373,8 @@ function UI.SetCombatLocked(isLocked)
     nameBox:SetEnabled(enabled)
     nameBox:SetTextColor(enabled and 1 or 0.5, enabled and 1 or 0.5, enabled and 1 or 0.5)
     useTargetBtn:SetEnabled(enabled)
+    questBtn:SetEnabled(enabled)
+    questBtn:SetAlpha(enabled and 1 or 0.4)
     pingTypeDD:SetEnabled(enabled)
     markerDD:SetEnabled(enabled)
     for _, cb in pairs(checkboxes) do

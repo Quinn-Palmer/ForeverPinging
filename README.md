@@ -27,7 +27,7 @@ pip install lupa
 python tests/run_tests.py
 ```
 
-This syntax-checks every TOC-listed Lua file under Lua 5.1 and runs the `Macro.lua` tests.
+This syntax-checks every TOC-listed Lua file under Lua 5.1 and runs the `Macro.lua` and `QuestMobs.lua` tests.
 
 ## Commands
 
@@ -61,5 +61,9 @@ Both work in combat (they're a click on the secure button) and with the window c
   Check that the bar macro and the Keybindings entry each ping exactly once, with
   `ActionButtonUseKeyDown` both on and off (`/console ActionButtonUseKeyDown 0|1`), with the window
   open and closed, and in combat. If the bar macro does nothing, try `/click ForeverPingingPingButton LeftButton 1`.
+- **Quest mobs menu.** Check `/dump C_QuestLog.GetQuestObjectives(<questID>)` on a kill quest for the
+  real text format (the parser handles `X slain: 3/8` and `3/8 X slain`). Check that `C_QuestLog.IsOnMap`
+  filters to the current zone, that the quest icon texture shows, and that `MenuUtil.CreateContextMenu`
+  opens the menu.
 - **Combat.** Inputs lock and Ping! still fires. `/fp`, `/fp reset` and the close button queue
   until combat ends.

@@ -34,15 +34,18 @@ def main():
     if bad:
         return 1
 
-    # Load Macro.lua the way WoW does: chunk called with (addonName, ns).
+    # Load the pure modules the way WoW does: chunk called with (addonName, ns).
     ns = lua.table()
     lua.execute("function __load(src, name, ...) return assert(loadstring(src, name))(...) end")
-    lua.globals().__load((ROOT / "Macro.lua").read_text(encoding="utf-8"), "@Macro.lua", "ForeverPinging", ns)
-    lua.globals().Macro = ns.Macro
+    for module in ("Macro", "QuestMobs"):
+        lua.globals().__load((ROOT / f"{module}.lua").read_text(encoding="utf-8"), f"@{module}.lua", "ForeverPinging", ns)
+        lua.globals()[module] = ns[module]
 
-    print()
-    failed = lua.globals().__load((ROOT / "tests" / "macro_spec.lua").read_text(encoding="utf-8"), "@macro_spec.lua")
-    return 1 if failed else 0
+    total_failed = 0
+    for spec in ("macro_spec.lua", "questmobs_spec.lua"):
+        print(f"\n== {spec}", flush=True)
+        total_failed += lua.globals().__load((ROOT / "tests" / spec).read_text(encoding="utf-8"), "@" + spec) or 0
+    return 1 if total_failed else 0
 
 
 if __name__ == "__main__":

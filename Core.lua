@@ -19,6 +19,7 @@ ns.DEFAULTS = {
         raidMarker = 0,
     },
     optionsExpanded = false,
+    questMobsAllZones = false,   -- quest mob menu: false = current zone only
     shown = true,
     -- position = { point, relativePoint, x, y } (nil = default spot)
 }
@@ -131,6 +132,42 @@ function ns.GetTargetName()
     if IsSecret(name) then return nil, L.TARGET_SECRET end
     if type(name) ~= "string" or name == "" then return nil, L.NO_TARGET end
     return name
+end
+
+---------------------------------------------------------------------------
+-- Quest mobs: reads the quest log into plain tables for ns.QuestMobs.Collect.
+-- Returns mobs, hiddenCount, or nil + reason.
+---------------------------------------------------------------------------
+function ns.GetQuestMobs(allZones)
+    local QL = C_QuestLog
+    if not (QL and QL.GetNumQuestLogEntries and QL.GetInfo and QL.GetQuestObjectives) then
+        return nil, L.QUEST_API_MISSING
+    end
+
+    local quests = {}
+    for i = 1, QL.GetNumQuestLogEntries() do
+        local info = QL.GetInfo(i)
+        if info and not info.isHeader and not info.isHidden and info.questID
+            and not IsSecret(info.questID) then
+            local objectives = {}
+            for _, o in ipairs(QL.GetQuestObjectives(info.questID) or {}) do
+                if not IsSecret(o.text) and not IsSecret(o.type) and not IsSecret(o.finished) then
+                    objectives[#objectives + 1] = o
+                end
+            end
+            local onMap = true
+            if QL.IsOnMap then
+                local v = QL.IsOnMap(info.questID)
+                onMap = not IsSecret(v) and v and true or false
+            end
+            quests[#quests + 1] = {
+                title = (not IsSecret(info.title) and info.title) or "?",
+                onMap = onMap,
+                objectives = objectives,
+            }
+        end
+    end
+    return ns.QuestMobs.Collect(quests, allZones)
 end
 
 ---------------------------------------------------------------------------
