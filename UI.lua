@@ -1,9 +1,10 @@
--- UI.lua: main window, options panel, secure Ping! button.
+-- UI.lua: main window, options panel, secure Ping! button, themes.
 --
 -- Combat rules this file follows:
 --   * The Ping! button's attributes are only set via ns.RunOutOfCombat.
 --   * The main frame is the secure button's parent, so it is never shown,
---     hidden or moved in combat (Core queues those).
+--     hidden, moved, resized, rescaled or re-skinned in combat (Core queues
+--     ApplyAppearance and ApplyShown).
 --   * Inputs are disabled while in combat; Ping! keeps working.
 
 local _, ns = ...
@@ -14,31 +15,30 @@ ns.UI = UI
 
 local WIDTH = 290
 local QUEST_BTN = 22
-local MAIN_HEIGHT = 112
 local PAD = 10
 local ROW_H = 22
+local GEAR = 18
+local WHITE = "Interface\\Buttons\\WHITE8X8"
 
-local BACKDROP = {
-    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-    tile = true, tileSize = 16, edgeSize = 16,
-    insets = { left = 4, right = 4, top = 4, bottom = 4 },
+-- Row offsets from the top, normal and compact (compact drops the title row).
+local LAYOUT = {
+    -- height leaves ~6px between the ping type dropdown and the bottom row.
+    normal  = { row1 = -32, row2 = -60, height = 118 },
+    compact = { row1 = -PAD, row2 = -PAD - 28, height = 96 },
 }
 
-local main, nameBox, questBtn, useTargetBtn, pingTypeDD, attackDD, pingBtn, optionsToggle, statusText
+local main, title, closeBtn, nameBox, questBtn, useTargetBtn, pingTypeDD, attackDD, pingBtn
+local optionsToggle, settingsBtn, statusText
 local optionsPanel, markerDD
 local checkboxes = {}   -- key -> { button, label }
+local themedLabels = {} -- font strings coloured with theme.text
 local locked = false
+local theme             -- resolved theme currently applied
 
-local OPTION_KEYS = {
-    "exactMatch", "skipDead", "enemiesOnly", "friendliesOnly",
-    "clearIfNotFound", "returnToPrevious",
-}
-
-local function SetTooltip(frame, title, body)
+local function SetTooltip(frame, titleText, body)
     frame:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(title)
+        GameTooltip:SetText(titleText)
         if body then
             GameTooltip:AddLine(body, 1, 1, 1, true)
         end
@@ -82,8 +82,8 @@ local function BuildQuestMenu(_, root)
         if item.SetTooltip then
             item:SetTooltip(function(tooltip)
                 tooltip:SetText(mob.name)
-                for _, title in ipairs(mob.quests) do
-                    tooltip:AddLine(title, 1, 1, 1)
+                for _, questTitle in ipairs(mob.quests) do
+                    tooltip:AddLine(questTitle, 1, 1, 1)
                 end
             end)
         end
@@ -164,12 +164,93 @@ local function BuildAttackMenu(_, root)
     if root.SetScrollMode then root:SetScrollMode(400) end
 end
 
-local function CreatePanel(name, parent)
-    local f = CreateFrame("Frame", name, parent, "BackdropTemplate")
-    f:SetBackdrop(BACKDROP)
-    f:SetBackdropColor(0, 0, 0, 0.85)
-    f:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
-    return f
+---------------------------------------------------------------------------
+-- Theme helpers
+---------------------------------------------------------------------------
+local function ClassColor()
+    local c
+    if C_ClassColor and C_ClassColor.GetClassColor then
+        c = C_ClassColor.GetClassColor(ns.playerClass)
+    end
+    if not c and RAID_CLASS_COLORS then
+        c = RAID_CLASS_COLORS[ns.playerClass]
+    end
+    if c and c.r then return { c.r, c.g, c.b } end
+end
+
+local function StylePanel(f, opacity)
+    f:SetBackdrop(theme.backdrop)
+    local bg, border = theme.bg, theme.border
+    f:SetBackdropColor(bg[1], bg[2], bg[3], (bg[4] or 1) * opacity)
+    f:SetBackdropBorderColor(border[1], border[2], border[3], border[4] or 1)
+end
+
+-- Flat themes hide the template's red button art and draw a box instead.
+-- The box textures sit in the BACKGROUND layer (under the label); the hover
+-- texture is in the HIGHLIGHT layer, so the client shows it on mouseover.
+local function SkinButton(btn, accent)
+    local flat = theme.flatButtons
+    for _, key in ipairs({ "Left", "Middle", "Right" }) do
+        if btn[key] then btn[key]:SetShown(not flat) end
+    end
+    local hl = btn:GetHighlightTexture()
+    if hl then hl:SetAlpha(flat and 0 or 1) end
+
+    if flat and not btn.fpSkin then
+        local s = {}
+        s.border = btn:CreateTexture(nil, "BACKGROUND", nil, -8)
+        s.border:SetAllPoints()
+        s.fill = btn:CreateTexture(nil, "BACKGROUND", nil, -7)
+        s.fill:SetPoint("TOPLEFT", 1, -1)
+        s.fill:SetPoint("BOTTOMRIGHT", -1, 1)
+        s.hover = btn:CreateTexture(nil, "HIGHLIGHT")
+        s.hover:SetPoint("TOPLEFT", 1, -1)
+        s.hover:SetPoint("BOTTOMRIGHT", -1, 1)
+        for _, t in pairs(s) do t:SetTexture(WHITE) end
+        btn.fpSkin = s
+    end
+    if btn.fpSkin then
+        for _, t in pairs(btn.fpSkin) do t:SetShown(flat) end
+    end
+
+    if flat then
+        local b = theme.button
+        local edge = (accent and theme.accent) or b.border
+        btn.fpSkin.border:SetVertexColor(edge[1], edge[2], edge[3], edge[4] or 1)
+        btn.fpSkin.fill:SetVertexColor(b.bg[1], b.bg[2], b.bg[3], b.bg[4] or 1)
+        btn.fpSkin.hover:SetVertexColor(b.hover[1], b.hover[2], b.hover[3], b.hover[4] or 1)
+        btn:SetNormalFontObject(GameFontHighlight)
+    else
+        btn:SetNormalFontObject(GameFontNormal)
+    end
+    btn:SetHighlightFontObject(GameFontHighlight)
+    btn:SetDisabledFontObject(GameFontDisable)
+end
+
+local function ColorText()
+    if not theme then return end
+    local c = locked and theme.textDisabled or theme.text
+    for _, fs in ipairs(themedLabels) do
+        fs:SetTextColor(c[1], c[2], c[3])
+    end
+    local i = locked and theme.textDisabled or theme.input
+    nameBox:SetTextColor(i[1], i[2], i[3])
+end
+
+local function ApplyLayout(compact)
+    local l = compact and LAYOUT.compact or LAYOUT.normal
+    main:SetHeight(l.height)
+    title:SetShown(not compact)
+    closeBtn:SetShown(not compact)
+
+    nameBox:ClearAllPoints()
+    nameBox:SetPoint("TOPLEFT", PAD + 6, l.row1)   -- InputBoxTemplate's left art sits outside the box
+    useTargetBtn:ClearAllPoints()
+    useTargetBtn:SetPoint("TOPRIGHT", -PAD, l.row1)
+    pingTypeDD:ClearAllPoints()
+    pingTypeDD:SetPoint("TOPLEFT", PAD, l.row2)
+    pingBtn:ClearAllPoints()
+    pingBtn:SetPoint("TOPRIGHT", -PAD, l.row2 + 1)
 end
 
 ---------------------------------------------------------------------------
@@ -202,8 +283,8 @@ end
 -- Build
 ---------------------------------------------------------------------------
 local function CreateMain()
-    main = CreatePanel("ForeverPingingFrame", UIParent)
-    main:SetSize(WIDTH, MAIN_HEIGHT)
+    main = CreateFrame("Frame", "ForeverPingingFrame", UIParent, "BackdropTemplate")
+    main:SetSize(WIDTH, LAYOUT.normal.height)
     main:SetFrameStrata("MEDIUM")
     main:SetClampedToScreen(true)
     main:SetMovable(true)
@@ -211,7 +292,7 @@ local function CreateMain()
     main:RegisterForDrag("LeftButton")
     if main.SetDontSavePosition then main:SetDontSavePosition(true) end
     main:SetScript("OnDragStart", function(self)
-        if InCombatLockdown() then return end
+        if InCombatLockdown() or ns.db.appearance.locked then return end
         self:StartMoving()
     end)
     main:SetScript("OnDragStop", function(self)
@@ -220,19 +301,18 @@ local function CreateMain()
     end)
     main:Hide()
 
-    local title = main:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    title = main:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     title:SetPoint("TOPLEFT", PAD, -PAD)
     title:SetText(L.TITLE)
 
-    local close = CreateFrame("Button", nil, main, "UIPanelCloseButton")
-    close:SetSize(24, 24)
-    close:SetPoint("TOPRIGHT", -2, -2)
-    close:SetScript("OnClick", function() ns.SetShown(false) end)
+    closeBtn = CreateFrame("Button", nil, main, "UIPanelCloseButton")
+    closeBtn:SetSize(24, 24)
+    closeBtn:SetPoint("TOPRIGHT", -2, -2)
+    closeBtn:SetScript("OnClick", function() ns.SetShown(false) end)
 
-    -- Row 1: name box + Use Target
+    -- Row 1: name box + quest mobs + Use Target (points set by ApplyLayout)
     nameBox = CreateFrame("EditBox", nil, main, "InputBoxTemplate")
     nameBox:SetSize(WIDTH - PAD * 2 - 100 - 6 - QUEST_BTN - 4, ROW_H)
-    nameBox:SetPoint("TOPLEFT", PAD + 6, -32)   -- InputBoxTemplate's left art sits outside the box
     nameBox:SetAutoFocus(false)
     nameBox:SetMaxLetters(48)
     nameBox:SetScript("OnTextChanged", function(self, userInput)
@@ -246,7 +326,6 @@ local function CreateMain()
 
     useTargetBtn = CreateFrame("Button", nil, main, "UIPanelButtonTemplate")
     useTargetBtn:SetSize(100, ROW_H)
-    useTargetBtn:SetPoint("TOPRIGHT", -PAD, -32)
     useTargetBtn:SetText(L.USE_TARGET)
     useTargetBtn:SetScript("OnClick", function()
         local name, reason = ns.GetTargetName()
@@ -273,15 +352,11 @@ local function CreateMain()
     -- Row 2: ping type + Ping!
     pingTypeDD = CreateFrame("DropdownButton", nil, main, "WowStyle1DropdownTemplate")
     pingTypeDD:SetWidth(WIDTH - PAD * 2 - 100 - 6)
-    pingTypeDD:SetPoint("TOPLEFT", PAD, -60)
     pingTypeDD:SetupMenu(function(_, root)
         for _, pt in ipairs(ns.Macro.PING_TYPES) do
             root:CreateRadio(L["PING_" .. pt.key],
                 function() return ns.db.pingType == pt.key end,
-                function()
-                    ns.db.pingType = pt.key
-                    ns.OnSettingsChanged()
-                end)
+                function() ns.Set("pingType", pt.key) end)
         end
     end)
 
@@ -290,7 +365,6 @@ local function CreateMain()
     pingBtn = CreateFrame("Button", "ForeverPingingPingButton", main,
         "SecureActionButtonTemplate, UIPanelButtonTemplate")
     pingBtn:SetSize(100, ROW_H + 2)
-    pingBtn:SetPoint("TOPRIGHT", -PAD, -59)
     pingBtn:SetText(L.PING)
     -- Both edges are registered, but useOnKeyDown=false makes the template act
     -- only on release. That way a mouse click, a keybind (Bindings.xml CLICK
@@ -303,7 +377,7 @@ local function CreateMain()
     pingBtn:Disable()
     SetTooltip(pingBtn, L.PING, L.PING_TOOLTIP_BODY)
 
-    -- Bottom row: options toggle + status
+    -- Bottom row: options toggle, status, settings gear
     optionsToggle = CreateFrame("Button", nil, main, "UIPanelButtonTemplate")
     optionsToggle:SetSize(90, 20)
     optionsToggle:SetPoint("BOTTOMLEFT", PAD, PAD)
@@ -312,9 +386,17 @@ local function CreateMain()
         UI.UpdateOptionsShown()
     end)
 
+    settingsBtn = CreateFrame("Button", nil, main)
+    settingsBtn:SetSize(GEAR, GEAR)
+    settingsBtn:SetPoint("BOTTOMRIGHT", -PAD, PAD + 1)
+    settingsBtn:SetNormalTexture("Interface\\WorldMap\\Gear_64Grey")
+    settingsBtn:SetHighlightTexture("Interface\\WorldMap\\Gear_64Grey", "ADD")
+    settingsBtn:SetScript("OnClick", function() ns.OpenSettings() end)
+    SetTooltip(settingsBtn, L.SETTINGS_BUTTON, L.SETTINGS_BUTTON_TIP)
+
     statusText = main:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
     statusText:SetPoint("LEFT", optionsToggle, "RIGHT", 8, 0)
-    statusText:SetPoint("RIGHT", main, "RIGHT", -PAD, 0)
+    statusText:SetPoint("RIGHT", settingsBtn, "LEFT", -4, 0)
     statusText:SetJustifyH("LEFT")
     statusText:SetWordWrap(false)
 end
@@ -326,19 +408,9 @@ local function CreateCheckbox(parent, key, y)
     local label = cb:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
     label:SetText(L["OPT_" .. key])
+    themedLabels[#themedLabels + 1] = label
     cb:SetScript("OnClick", function(self)
-        local opts = ns.db.options
-        opts[key] = self:GetChecked() and true or false
-        if opts[key] then
-            if key == "enemiesOnly" then
-                opts.friendliesOnly = false
-                checkboxes.friendliesOnly.button:SetChecked(false)
-            elseif key == "friendliesOnly" then
-                opts.enemiesOnly = false
-                checkboxes.enemiesOnly.button:SetChecked(false)
-            end
-        end
-        ns.OnSettingsChanged()
+        ns.Set(key, self:GetChecked() and true or false)
     end)
     local tip = rawget(L, "OPT_" .. key .. "_TIP")
     if tip then SetTooltip(cb, L["OPT_" .. key], tip) end
@@ -346,12 +418,12 @@ local function CreateCheckbox(parent, key, y)
 end
 
 local function CreateOptions()
-    optionsPanel = CreatePanel("ForeverPingingOptions", main)
+    optionsPanel = CreateFrame("Frame", "ForeverPingingOptions", main, "BackdropTemplate")
     optionsPanel:SetPoint("TOPLEFT", main, "BOTTOMLEFT", 0, 2)
     optionsPanel:SetPoint("TOPRIGHT", main, "BOTTOMRIGHT", 0, 2)
 
     local y = -PAD + 2
-    for _, key in ipairs(OPTION_KEYS) do
+    for _, key in ipairs(ns.OPTION_KEYS) do
         CreateCheckbox(optionsPanel, key, y)
         y = y - 24
     end
@@ -359,6 +431,7 @@ local function CreateOptions()
     local markerLabel = optionsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     markerLabel:SetPoint("TOPLEFT", PAD + 2, y - 8)
     markerLabel:SetText(L.RAID_MARKER)
+    themedLabels[#themedLabels + 1] = markerLabel
 
     markerDD = CreateFrame("DropdownButton", nil, optionsPanel, "WowStyle1DropdownTemplate")
     markerDD:SetWidth(130)
@@ -367,10 +440,7 @@ local function CreateOptions()
         for i = 0, ns.Macro.MARKER_COUNT do
             root:CreateRadio(L["MARKER_" .. i],
                 function() return ns.db.options.raidMarker == i end,
-                function()
-                    ns.db.options.raidMarker = i
-                    ns.OnSettingsChanged()
-                end)
+                function() ns.Set("raidMarker", i) end)
         end
     end)
 
@@ -379,6 +449,7 @@ local function CreateOptions()
     local attackLabel = optionsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     attackLabel:SetPoint("TOPLEFT", PAD + 2, y - 8)
     attackLabel:SetText(L.ATTACK)
+    themedLabels[#themedLabels + 1] = attackLabel
 
     attackDD = CreateFrame("DropdownButton", nil, optionsPanel, "WowStyle1DropdownTemplate")
     attackDD:SetWidth(180)
@@ -400,28 +471,59 @@ end
 
 function UI.Create()
     if main then return end
+    theme = ns.Themes.Resolve(ns.db.appearance.theme, ClassColor())
     CreateMain()
     CreateOptions()
+    ApplyLayout(false)
+    -- Background straight away, even if ApplyAppearance is queued behind
+    -- combat (a /reload mid-fight).
+    StylePanel(main, ns.db.appearance.opacity)
+    StylePanel(optionsPanel, ns.db.appearance.opacity)
 end
 
 ---------------------------------------------------------------------------
 -- State -> widgets
 ---------------------------------------------------------------------------
+-- Out of combat only (Core calls it through ns.RunOutOfCombat): it rescales,
+-- resizes and re-skins the secure button's parent.
+function UI.ApplyAppearance()
+    local a = ns.db.appearance
+    theme = ns.Themes.Resolve(a.theme, ClassColor())
+
+    StylePanel(main, a.opacity)
+    StylePanel(optionsPanel, a.opacity)
+    title:SetTextColor(theme.title[1], theme.title[2], theme.title[3])
+    SkinButton(useTargetBtn)
+    SkinButton(optionsToggle)
+    SkinButton(pingBtn, true)
+    ColorText()
+
+    main:SetScale(a.scale)
+    ApplyLayout(a.compact)
+end
+
 function UI.UpdateOptionsShown()
     optionsPanel:SetShown(ns.db.optionsExpanded)
     optionsToggle:SetText(ns.db.optionsExpanded and L.OPTIONS_EXPANDED or L.OPTIONS_COLLAPSED)
 end
 
--- Pushes saved settings into every widget (load, reset).
-function UI.Refresh()
-    nameBox:SetText(ns.db.name or "")
-    nameBox:SetCursorPosition(0)
+-- Re-reads checkboxes and dropdowns from saved settings (after any change,
+-- including ones made on the game's Settings page).
+function UI.RefreshValues()
+    if not main then return end
     for key, cb in pairs(checkboxes) do
         cb.button:SetChecked(ns.db.options[key] and true or false)
     end
     pingTypeDD:GenerateMenu()
     attackDD:GenerateMenu()
     markerDD:GenerateMenu()
+end
+
+-- Pushes saved settings into every widget (load, reset).
+function UI.Refresh()
+    nameBox:SetText(ns.db.name or "")
+    nameBox:SetCursorPosition(0)
+    UI.RefreshValues()
     UI.UpdateOptionsShown()
 end
 
@@ -460,7 +562,6 @@ function UI.SetCombatLocked(isLocked)
     local enabled = not isLocked
     if isLocked then nameBox:ClearFocus() end
     nameBox:SetEnabled(enabled)
-    nameBox:SetTextColor(enabled and 1 or 0.5, enabled and 1 or 0.5, enabled and 1 or 0.5)
     useTargetBtn:SetEnabled(enabled)
     questBtn:SetEnabled(enabled)
     questBtn:SetAlpha(enabled and 1 or 0.4)
@@ -470,7 +571,7 @@ function UI.SetCombatLocked(isLocked)
     markerDD:SetEnabled(enabled)
     for _, cb in pairs(checkboxes) do
         cb.button:SetEnabled(enabled)
-        cb.label:SetFontObject(enabled and "GameFontHighlightSmall" or "GameFontDisableSmall")
     end
+    ColorText()
     UI.UpdateStatus()
 end

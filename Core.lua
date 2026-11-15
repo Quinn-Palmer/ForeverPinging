@@ -24,6 +24,14 @@ ns.DEFAULTS = {
     -- classFile -> spell ID from Abilities.lua, or a custom spell name string.
     attackByClass = {},
     shown = true,
+    macroIcon = "Ability_Hunter_MarkedForDeath",   -- one of ns.MACRO_ICONS
+    appearance = {
+        theme = "tooltip",   -- key from Themes.LIST
+        scale = 1,           -- window scale, SCALE_MIN..SCALE_MAX
+        opacity = 1,         -- multiplier on the theme's background alpha, 0..1
+        locked = false,      -- true = window can't be dragged
+        compact = false,     -- true = no title row, tighter layout
+    },
     -- position = { point, relativePoint, x, y } (nil = default spot)
 }
 
@@ -67,7 +75,19 @@ local function Sanitize(db)
             db.attackByClass[class] = nil
         end
     end
+
+    if not ns.IsValidMacroIcon(db.macroIcon) then db.macroIcon = ns.MACRO_ICONS[1] end
+
+    local a = db.appearance
+    if not ns.Themes.IsValid(a.theme) then a.theme = ns.Themes.DEFAULT end
+    a.scale = math.min(ns.SCALE_MAX, math.max(ns.SCALE_MIN, tonumber(a.scale) or 1))
+    a.opacity = math.min(1, math.max(0, tonumber(a.opacity) or 1))
+    a.locked = a.locked and true or false
+    a.compact = a.compact and true or false
 end
+
+ns.SCALE_MIN, ns.SCALE_MAX, ns.SCALE_STEP = 0.7, 1.5, 0.05
+ns.OPACITY_STEP = 0.05
 
 ---------------------------------------------------------------------------
 -- Combat queue: secure attributes, and showing/moving the frame that holds
@@ -109,15 +129,36 @@ function ns.GetAttackChoice()
     return ns.db.attackByClass[ns.playerClass]
 end
 
+-- The attack choice as one string, so the Settings page can hold it:
+-- "" = none, "spell:<id>" = list entry, "custom:<name>" = typed spell name.
+function ns.EncodeAttack(choice)
+    if type(choice) == "number" then
+        return "spell:" .. choice
+    elseif type(choice) == "string" then
+        return "custom:" .. choice
+    end
+    return ""
+end
+
+function ns.DecodeAttack(value)
+    if type(value) ~= "string" then return nil end
+    local id = value:match("^spell:(%d+)$")
+    if id then return tonumber(id) end
+    local name = value:match("^custom:(.+)$")
+    if name then
+        name = ns.Macro.CleanName(name)
+        return name ~= "" and name or nil
+    end
+    return nil
+end
+
 -- choice: spell ID from Abilities.lua, custom name string, or nil for none.
 function ns.SetAttack(choice)
     if type(choice) == "string" then
         choice = ns.Macro.CleanName(choice)
         if choice == "" then choice = nil end
     end
-    ns.db.attackByClass[ns.playerClass] = choice
-    ns.UI.RefreshAttack()
-    ns.OnSettingsChanged()
+    ns.Set("attack", ns.EncodeAttack(choice))
 end
 
 -- Localized spell name for an ID, or nil if the client doesn't know it.
@@ -185,6 +226,139 @@ function ns.OnSettingsChanged()
 end
 
 ---------------------------------------------------------------------------
+-- Settings fields: every setting the window and the game's Settings page
+-- both edit. Both sides write through ns.Set, so each sees the other's
+-- changes. Options.lua registers a Settings proxy for each field.
+--   get()      current value
+--   set(v)     writes the saved value (nothing else)
+--   changed(v) side effects after a write
+--   queues     true = the effect waits for combat to end (warn the player)
+---------------------------------------------------------------------------
+local function MacroChanged()
+    ns.UI.RefreshValues()
+    ns.OnSettingsChanged()
+end
+
+local function AppearanceChanged()
+    ns.RunOutOfCombat("appearance", function() ns.UI.ApplyAppearance() end)
+end
+
+local function AppearanceField(key)
+    return {
+        get = function() return ns.db.appearance[key] end,
+        set = function(v) ns.db.appearance[key] = v end,
+        changed = AppearanceChanged,
+        queues = true,
+    }
+end
+
+ns.FIELDS = {
+    shown = {
+        get = function() return ns.db.shown end,
+        set = function(v) ns.db.shown = v and true or false end,
+        changed = function() ns.RunOutOfCombat("shown", function() ns.UI.ApplyShown() end) end,
+        queues = true,
+    },
+    pingType = {
+        get = function() return ns.db.pingType end,
+        set = function(v)
+            if ns.Macro.IsValidPingType(v) then ns.db.pingType = v end
+        end,
+        changed = MacroChanged,
+        queues = true,
+    },
+    raidMarker = {
+        get = function() return ns.db.options.raidMarker end,
+        set = function(v)
+            v = math.floor(tonumber(v) or 0)
+            if v < 0 or v > ns.Macro.MARKER_COUNT then v = 0 end
+            ns.db.options.raidMarker = v
+        end,
+        changed = MacroChanged,
+        queues = true,
+    },
+    attack = {
+        get = function() return ns.EncodeAttack(ns.GetAttackChoice()) end,
+        set = function(v) ns.db.attackByClass[ns.playerClass] = ns.DecodeAttack(v) end,
+        changed = function()
+            ns.UI.RefreshAttack()
+            ns.OnSettingsChanged()
+        end,
+        queues = true,
+    },
+    macroIcon = {
+        get = function() return ns.db.macroIcon end,
+        set = function(v)
+            if ns.IsValidMacroIcon(v) then ns.db.macroIcon = v end
+        end,
+        changed = function() ns.RunOutOfCombat("macroIcon", ns.UpdateMacroIcon) end,
+        queues = true,
+    },
+    theme = AppearanceField("theme"),
+    scale = AppearanceField("scale"),
+    opacity = AppearanceField("opacity"),
+    compact = AppearanceField("compact"),
+    -- Lock only affects dragging, so it takes effect immediately.
+    locked = {
+        get = function() return ns.db.appearance.locked end,
+        set = function(v) ns.db.appearance.locked = v and true or false end,
+        changed = function() end,
+    },
+}
+
+-- Boolean targeting options. Enemies only / Friendlies only switch each other off.
+ns.OPTION_KEYS = {
+    "exactMatch", "skipDead", "enemiesOnly", "friendliesOnly",
+    "clearIfNotFound", "returnToPrevious",
+}
+local EXCLUSIVE = { enemiesOnly = "friendliesOnly", friendliesOnly = "enemiesOnly" }
+
+for _, key in ipairs(ns.OPTION_KEYS) do
+    ns.FIELDS[key] = {
+        get = function() return ns.db.options[key] end,
+        set = function(v) ns.db.options[key] = v and true or false end,
+        changed = function(v)
+            if v and EXCLUSIVE[key] then
+                ns.Set(EXCLUSIVE[key], false)
+            end
+            MacroChanged()
+        end,
+        queues = true,
+    }
+end
+
+local warnedThisCombat = false
+
+-- Writes the value and runs its side effects. Called directly, or by the
+-- Settings proxy's setter (Options.lua).
+function ns.ApplyField(key, value)
+    local field = ns.FIELDS[key]
+    if not field or field.get() == value then return end
+    field.set(value)
+    field.changed(field.get())
+    if field.queues and InCombatLockdown() and not warnedThisCombat then
+        warnedThisCombat = true
+        Print(L.QUEUED)
+    end
+end
+
+function ns.Get(key)
+    return ns.FIELDS[key].get()
+end
+
+-- The one way to change a setting. Going through the Settings proxy (when
+-- the Settings page is registered) also refreshes that page's controls.
+function ns.Set(key, value)
+    local setting = ns.Options and ns.Options.GetSetting(key)
+    if setting then
+        local ok, err = pcall(setting.SetValue, setting, value)
+        if not ok then geterrorhandler()(err) end
+        if ns.FIELDS[key].get() == value then return end
+    end
+    ns.ApplyField(key, value)
+end
+
+---------------------------------------------------------------------------
 -- Target name (guarded against Midnight secret values)
 ---------------------------------------------------------------------------
 local function IsSecret(v)
@@ -246,10 +420,7 @@ end
 -- Window toggle / reset
 ---------------------------------------------------------------------------
 function ns.SetShown(shown)
-    ns.db.shown = shown
-    if not ns.RunOutOfCombat("shown", function() ns.UI.ApplyShown() end) then
-        Print(L.QUEUED)
-    end
+    ns.Set("shown", shown and true or false)
 end
 
 function ns.ToggleWindow()
@@ -262,9 +433,11 @@ function ns.Reset()
         for k in pairs(db) do db[k] = nil end
         MergeDefaults(db, ns.DEFAULTS)
         ns.UI.Refresh()
+        ns.UI.ApplyAppearance()
         ns.UI.ResetPosition()
         ns.UI.ApplyShown()
         ns.Rebuild()
+        if ns.Options then ns.Options.RefreshAll() end
         Print(L.RESET_DONE)
     end
     if not ns.RunOutOfCombat("reset", doReset) then
@@ -297,7 +470,62 @@ _G["BINDING_NAME_CLICK ForeverPingingPingButton:LeftButton"] = L.BINDING_PING
 
 ns.ACTION_MACRO_NAME = "FP Ping"      -- macro names max 16 chars
 ns.ACTION_MACRO_BODY = "/click ForeverPingingPingButton"
-local ACTION_MACRO_ICON = "Interface\\Icons\\Ability_Hunter_MarkedForDeath"
+-- Macro icons are a file ID or a bare icon name ("INV_Misc_QuestionMark"),
+-- never a full "Interface\\Icons\\..." path: the macro API rejects paths.
+-- Choices for the "Macro icon" setting (names under Interface\Icons).
+ns.MACRO_ICONS = {
+    "Ability_Hunter_MarkedForDeath",   -- red crosshair
+    "Ability_Hunter_SniperShot",       -- Hunter's Mark
+    "Ability_Marksmanship",            -- bow on target
+    "Ability_Hunter_EagleEye",         -- eye
+    "INV_Misc_Spyglass_03",            -- spyglass
+}
+local QUESTION_MARK_ICON = 134400   -- INV_Misc_QuestionMark
+
+function ns.IsValidMacroIcon(name)
+    for _, n in ipairs(ns.MACRO_ICONS) do
+        if n == name then return true end
+    end
+    return false
+end
+
+-- Icon candidates for the chosen icon, best first.
+local function MacroIcons()
+    local name = ns.db and ns.db.macroIcon or ns.MACRO_ICONS[1]
+    local icons = {}
+    if GetFileIDFromPath then
+        local id = GetFileIDFromPath("Interface\\Icons\\" .. name)
+        if type(id) == "number" and id > 0 then icons[#icons + 1] = id end
+    end
+    icons[#icons + 1] = name
+    icons[#icons + 1] = QUESTION_MARK_ICON
+    return icons
+end
+
+-- Tries each icon until the client accepts one. Returns the macro index or nil.
+local function CreateMacroWithIcon(perChar)
+    for _, icon in ipairs(MacroIcons()) do
+        local ok, index = pcall(CreateMacro, ns.ACTION_MACRO_NAME, icon, ns.ACTION_MACRO_BODY, perChar)
+        if ok and index and index > 0 then return index end
+    end
+end
+
+local function RepairMacro(index)
+    for _, icon in ipairs(MacroIcons()) do
+        if pcall(EditMacro, index, ns.ACTION_MACRO_NAME, icon, ns.ACTION_MACRO_BODY) then
+            return true
+        end
+    end
+end
+
+-- After the icon setting changes: update the macro if it already exists.
+-- Out of combat only (macros can't be edited in combat).
+function ns.UpdateMacroIcon()
+    local index = GetMacroIndexByName(ns.ACTION_MACRO_NAME)
+    if index and index > 0 then
+        RepairMacro(index)
+    end
+end
 
 -- Creates (or repairs) an account-wide macro that clicks the Ping! button,
 -- then puts it on the cursor so the player can drop it on an action bar.
@@ -310,7 +538,11 @@ function ns.CreateActionMacro()
 
     local index = GetMacroIndexByName(ns.ACTION_MACRO_NAME)
     if index and index > 0 then
-        EditMacro(index, nil, nil, ns.ACTION_MACRO_BODY)
+        -- Also resets the icon, in case an earlier version left it broken.
+        if not RepairMacro(index) then
+            Print(L.MACRO_FAILED)
+            return
+        end
     else
         local numAccount, numChar = GetNumMacros()
         local perChar
@@ -322,13 +554,18 @@ function ns.CreateActionMacro()
             Print(L.MACRO_FULL)
             return
         end
-        index = CreateMacro(ns.ACTION_MACRO_NAME, ACTION_MACRO_ICON, ns.ACTION_MACRO_BODY, perChar)
-        if not index or index == 0 then
+        index = CreateMacroWithIcon(perChar)
+        if not index then
             Print(L.MACRO_FAILED)
             return
         end
     end
 
+    -- From the Settings page's Create button: get the panel out of the way so
+    -- the action bars can be reached while the macro is on the cursor.
+    if SettingsPanel and SettingsPanel:IsShown() and HideUIPanel then
+        HideUIPanel(SettingsPanel)
+    end
     PickupMacro(index)
     Print(L.MACRO_READY:format(ns.ACTION_MACRO_NAME))
 end
@@ -348,6 +585,8 @@ SlashCmdList.FOREVERPINGING = function(msg)
         ns.PrintDebug()
     elseif cmd == "macro" then
         ns.CreateActionMacro()
+    elseif cmd == "options" or cmd == "config" or cmd == "settings" then
+        ns.OpenSettings()
     else
         Print(L.HELP)
     end
@@ -380,16 +619,19 @@ events:SetScript("OnEvent", function(_, event, arg1)
         ns.UI.Create()
         ns.UI.Refresh()
         ns.RunOutOfCombat("shown", function()
+            ns.UI.ApplyAppearance()   -- scale first, so the saved position lands right
             ns.UI.RestorePosition()
             ns.UI.ApplyShown()
         end)
         ns.UI.SetCombatLocked(InCombatLockdown())
         ns.Rebuild()
+        ns.Options.Register()
 
     elseif event == "PLAYER_REGEN_DISABLED" then
         ns.UI.SetCombatLocked(true)
 
     elseif event == "PLAYER_REGEN_ENABLED" then
+        warnedThisCombat = false
         local ranQueued = FlushQueue()
         ns.UI.SetCombatLocked(false)
         if ranQueued then

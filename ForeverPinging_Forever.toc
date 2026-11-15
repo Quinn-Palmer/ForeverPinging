@@ -3,7 +3,7 @@
 ## Title: Forever Pinging
 ## Notes: Builds a "target X, then ping it" macro and runs it from a real button.
 ## Author: Quinn
-## Version: 0.2.0-alpha
+## Version: 0.3.0-alpha
 ## SavedVariables: ForeverPingingDB
 ## IconTexture: Interface\Icons\Ability_Hunter_MarkedForDeath
 
@@ -11,5 +11,7 @@ Locales\enUS.lua
 Macro.lua
 Abilities.lua
 QuestMobs.lua
+Themes.lua
 Core.lua
 UI.lua
+Options.lua

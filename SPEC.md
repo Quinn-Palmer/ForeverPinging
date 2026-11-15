@@ -55,6 +55,26 @@ Built on open from `C_QuestLog.GetQuestObjectives`; parsing lives in `QuestMobs.
   text may parse imperfectly; edit the name box if so.
 - Menu scrolls past ~300 px as a safety net. Disabled in combat like the other inputs.
 
+## Settings page (Options → AddOns → Forever Pinging)
+Built with the Settings API (`Options.lua`). Every control is a proxy setting over a field in
+`ns.FIELDS` (Core), and the window and the page both write through `ns.Set`, so a change on one
+shows up on the other immediately. Opened from the gear on the window or `/fp options`.
+- **Window:** Show window, Theme, Scale (70–150%), Background opacity (0–100%), Lock position,
+  Compact mode, Reset position button
+- **Ping:** Ping type, Attack (list entries, plus the current custom spell if one is set; custom
+  spells are typed in the window), Raid marker
+- **Targeting:** the six option checkboxes (Enemies only / Friendlies only stay exclusive)
+- **Keybinding:** Macro icon (five target-style icons), Create action bar macro button (same as `/fp macro`)
+- The name box is window-only.
+
+## Themes
+Defined in `Themes.lua` (pure, unit-tested): Classic Tooltip (default, the original look),
+Blizzard Dialog, Dark Minimal, Class Color (Dark Minimal with class-coloured border, title and
+Ping! edge), Parchment. Flat themes replace the red button art with flat boxes. Opacity
+multiplies the theme's background alpha only. Compact mode hides the title row and close button.
+Theme, scale, opacity and compact change the secure button's parent, so in combat they're saved
+and applied after combat (with one chat note per fight).
+
 ## Behaviour
 - Rebuild macrotext whenever Name/options/ping type change.
 - In combat: inputs disabled (or edits queued) with a visible "locked in combat" note; Ping! still works.
@@ -62,7 +82,7 @@ Built on open from `C_QuestLog.GetQuestObjectives`; parsing lives in `QuestMobs.
 - Empty name → Ping! button disabled.
 
 ## Commands
-- `/fp` toggle window · `/fp reset` reset position/settings · `/fp debug` print current macrotext
+- `/fp` toggle window · `/fp options` open the Settings page · `/fp reset` reset position/settings · `/fp debug` print current macrotext
 - `/fp macro` create/repair account macro `FP Ping` (`/click ForeverPingingPingButton`) and put it on the cursor for the action bar
 
 ## Keybinding
@@ -70,7 +90,7 @@ Built on open from `C_QuestLog.GetQuestObjectives`; parsing lives in `QuestMobs.
 - Ping! button acts on release only (`useOnKeyDown = false`) so mouse, keybind and `/click` each fire once
 
 ## Saved settings (`ForeverPingingDB`)
-`dbVersion, name, pingType, options{...}, optionsExpanded, questMobsAllZones, attackByClass{...}, position`
+`dbVersion, name, pingType, options{...}, optionsExpanded, questMobsAllZones, attackByClass{...}, shown, appearance{theme, scale, opacity, locked, compact}, position`
 
 ## Later (not v0.1)
 - Saved list of target names / presets
