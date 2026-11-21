@@ -121,18 +121,29 @@ end)
 
 test("attack is cast after the ping", function()
     eq(Macro.Build(settings({ pingType = "attack" }), "Flame Shock"),
-        "/targetexact Night Watch Guard\n/ping [@target,exists] 1\n/cast [@target,harm,nodead] Flame Shock")
+        "/cleartarget\n/targetexact Night Watch Guard\n/ping [@target,exists] 1\n/cast [@target,harm,nodead] Flame Shock")
 end)
 
 test("attack goes before return to previous target", function()
     eq(Macro.Build(settings({ options = { returnToPrevious = true } }), "Flame Shock"),
-        "/targetexact Night Watch Guard\n/ping [@target,exists]\n"
+        "/cleartarget\n/targetexact Night Watch Guard\n/ping [@target,exists]\n"
         .. "/cast [@target,harm,nodead] Flame Shock\n/targetlasttarget")
+end)
+
+test("an attack always clears the target before searching", function()
+    -- A missed search must not leave the old target for the attack to hit.
+    local text = Macro.Build(settings({ options = { clearIfNotFound = false } }), "Flame Shock")
+    eq(text:match("^/cleartarget\n/targetexact ") ~= nil, true)
+end)
+
+test("an attack with clear-if-not-found on adds only one /cleartarget", function()
+    eq(Macro.Build(settings({ options = { clearIfNotFound = true } }), "Flame Shock"),
+        "/cleartarget\n/targetexact Night Watch Guard\n/ping [@target,exists]\n/cast [@target,harm,nodead] Flame Shock")
 end)
 
 test("toggle prefix is kept", function()
     eq(Macro.Build(settings(), "!Auto Shot"),
-        "/targetexact Night Watch Guard\n/ping [@target,exists]\n/cast [@target,harm,nodead] !Auto Shot")
+        "/cleartarget\n/targetexact Night Watch Guard\n/ping [@target,exists]\n/cast [@target,harm,nodead] !Auto Shot")
 end)
 
 test("empty, whitespace, bare ! or non-string attack adds nothing", function()
@@ -144,7 +155,7 @@ end)
 
 test("attack name can't inject lines", function()
     eq(Macro.Build(settings(), "Flame Shock\n/dance"),
-        "/targetexact Night Watch Guard\n/ping [@target,exists]\n/cast [@target,harm,nodead] Flame Shock /dance")
+        "/cleartarget\n/targetexact Night Watch Guard\n/ping [@target,exists]\n/cast [@target,harm,nodead] Flame Shock /dance")
 end)
 
 test("no name means no macro even with an attack", function()
@@ -167,7 +178,7 @@ end)
 
 test("no ping still marks, attacks and returns", function()
     eq(Macro.Build(settings({ pingType = "none", options = { raidMarker = 8, returnToPrevious = true } }), "Flame Shock"),
-        "/targetexact Night Watch Guard\n/tm [@target,exists] 8\n"
+        "/cleartarget\n/targetexact Night Watch Guard\n/tm [@target,exists] 8\n"
         .. "/cast [@target,harm,nodead] Flame Shock\n/targetlasttarget")
 end)
 

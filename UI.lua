@@ -35,6 +35,23 @@ local themedLabels = {} -- font strings coloured with theme.text
 local locked = false
 local theme             -- resolved theme currently applied
 
+-- Ping cooldown state (UI.ApplyCooldown)
+local cooldownHandler   -- secure handler that owns the OnClick wrap
+local secureCooldown = false   -- true = the wrap can read GetTime, works in combat
+local lastFallbackPing  -- GetTime() of the last click let through by the fallback
+
+-- Runs in the restricted environment before every OnClick of Ping!, in or out
+-- of combat. Returning false drops the click, so the macro never runs.
+-- lastPing lives in the handler's private snippet environment.
+local COOLDOWN_SNIPPET = [[
+    if down then return end   -- useOnKeyDown=false: only the release acts
+    local cd = owner:GetAttribute("cooldown") or 0
+    if cd <= 0 or not GetTime then return end
+    local now = GetTime()
+    if lastPing and now - lastPing < cd then return false end
+    lastPing = now
+]]
+
 local function SetTooltip(frame, titleText, body)
     frame:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -99,6 +116,20 @@ local function BuildQuestMenu(_, root)
 
     -- Safety net if "All zones" is on with a full quest log.
     if root.SetScrollMode then root:SetScrollMode(300) end
+end
+
+-- Opens the menu beside the window's right edge instead of at the cursor, so it
+-- doesn't cover the name box / Use Target. Falls back to a cursor context menu if
+-- the Menu internals differ in this client.
+local function OpenQuestMenu(owner)
+    local ok = pcall(function()
+        local desc = MenuUtil.CreateRootMenuDescription(MenuVariants.GetDefaultContextMenuMixin())
+        Menu.PopulateDescription(BuildQuestMenu, owner, desc)
+        Menu.GetManager():OpenMenu(owner, desc, CreateAnchor("TOPLEFT", main, "TOPRIGHT", 2, 0))
+    end)
+    if not ok then
+        MenuUtil.CreateContextMenu(owner, BuildQuestMenu)
+    end
 end
 
 -- Custom attack: any spell name the player types (for spells not in the list).
@@ -345,7 +376,7 @@ local function CreateMain()
     questBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
     questBtn:SetScript("OnClick", function(self)
         if InCombatLockdown() then return end
-        MenuUtil.CreateContextMenu(self, BuildQuestMenu)
+        OpenQuestMenu(self)
     end)
     SetTooltip(questBtn, L.QUEST_MOBS, L.QUEST_MOBS_TOOLTIP_BODY)
 
@@ -376,6 +407,23 @@ local function CreateMain()
     pingBtn:SetAttribute("macrotext", "")
     pingBtn:Disable()
     SetTooltip(pingBtn, L.PING, L.PING_TOOLTIP_BODY)
+    -- Fallback cooldown, only used when the secure one can't run (see
+    -- UI.ApplyCooldown). Blocks a click by clearing "type" for that one click.
+    pingBtn:SetScript("PreClick", function(self, _, down)
+        if secureCooldown or down or InCombatLockdown() then return end
+        local cd = ns.db.pingCooldown
+        local now = GetTime()
+        if cd > 0 and lastFallbackPing and now - lastFallbackPing < cd then
+            self:SetAttribute("type", nil)
+        else
+            lastFallbackPing = now
+        end
+    end)
+    pingBtn:SetScript("PostClick", function(self)
+        if not InCombatLockdown() and self:GetAttribute("type") ~= "macro" then
+            self:SetAttribute("type", "macro")
+        end
+    end)
 
     -- Bottom row: options toggle, status, settings gear
     optionsToggle = CreateFrame("Button", nil, main, "UIPanelButtonTemplate")
@@ -534,6 +582,27 @@ end
 
 function UI.ApplyShown()
     main:SetShown(ns.db.shown)
+end
+
+-- Out of combat only (called through ns.RunOutOfCombat): wrapping a secure
+-- button and setting the handler's attribute are both blocked in combat.
+function UI.ApplyCooldown(seconds)
+    if not cooldownHandler then
+        cooldownHandler = CreateFrame("Frame", nil, nil, "SecureHandlerBaseTemplate")
+        -- Not sure GetTime is exposed to secure snippets on this client; ask.
+        cooldownHandler:Execute([[ self:SetAttribute("hasGetTime", GetTime ~= nil) ]])
+        secureCooldown = cooldownHandler:GetAttribute("hasGetTime") and true or false
+        SecureHandlerWrapScript(pingBtn, "OnClick", cooldownHandler, COOLDOWN_SNIPPET)
+    end
+    cooldownHandler:SetAttribute("cooldown", seconds)
+end
+
+-- For /fp debug: "off", "secure" (works in combat) or "fallback" (out of
+-- combat only), or nil before ApplyCooldown has run.
+function UI.CooldownMode()
+    if not cooldownHandler then return nil end
+    if (ns.db.pingCooldown or 0) <= 0 then return "off" end
+    return secureCooldown and "secure" or "fallback"
 end
 
 -- Out of combat only (called through ns.RunOutOfCombat).

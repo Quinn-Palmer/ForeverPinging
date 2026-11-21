@@ -56,6 +56,11 @@ Either way, the window still sets the name, ping type, attack and options. The k
 
 Both work in combat (they're a click on the secure button) and with the window closed.
 
+**Ping cooldown** (Settings page, Ping section, default 1s): after a ping goes out, further presses
+of Ping!, the keybind or the bar macro are ignored for that long, so spam-clicking sends one ping.
+Set it to Off for no limit. **Out of combat only on Forever:** secure snippets can't read `GetTime`
+there (confirmed in-game, 1.60.1), so in combat every press pings. A change made in combat applies when combat ends.
+
 ## Verify in-game (open questions from the spec)
 
 - **AllowLoadGameType.** The TOC uses `forever` per CLAUDE.md. Installed Forever addons
@@ -66,7 +71,8 @@ Both work in combat (they're a click on the secure button) and with the window c
 - **`/tm [@target,exists] N`.** Check that the conditional is accepted. Re-applying the same
   marker may toggle it off.
 - **Clear target if not found.** This is implemented as a `/cleartarget` before the search,
-  so a miss leaves no target and nothing is pinged.
+  so a miss leaves no target and nothing is pinged. It's always added when an attack is set:
+  with an enemy targeted and a name that isn't nearby, Ping! should leave you with no target and cast nothing.
 - **Return to previous target with a missed search.** `/targetlasttarget` may jump to an older
   target when nothing matched, or when combined with "Clear target if not found".
 - **Keybind / `/click`.** The button sets `useOnKeyDown = false` so it acts on release only.
@@ -75,14 +81,18 @@ Both work in combat (they're a click on the secure button) and with the window c
   open and closed, and in combat. If the bar macro does nothing, try `/click ForeverPingingPingButton LeftButton 1`.
 - **Quest mobs menu.** Check `/dump C_QuestLog.GetQuestObjectives(<questID>)` on a kill quest for the
   real text format (the parser handles `X slain: 3/8` and `3/8 X slain`). Check that `C_QuestLog.IsOnMap`
-  filters to the current zone, that the quest icon texture shows, and that `MenuUtil.CreateContextMenu`
-  opens the menu.
+  filters to the current zone and that the quest icon texture shows. The menu should open beside the
+  window's right edge; if it opens at the cursor instead, the anchored `Menu.GetManager():OpenMenu`
+  path failed and the `MenuUtil.CreateContextMenu` fallback ran.
 - **Attack list.** The spell IDs in `Abilities.lua` are Classic rank 1 IDs. For each class, check
   that the menu shows real names (`/dump C_Spell.GetSpellName(8050)` should say Flame Shock), that
   learned spells aren't greyed (`/dump IsPlayerSpell(8050)`), and that `/cast Flame Shock` with no rank
   uses the highest rank. Also check whether Forever changed any cast times (Corruption, Multi-Shot, Exorcism).
 - **Attack in the macro.** One press should target, ping and cast. Check the `[@target,harm,nodead]`
   conditional skips friendlies and corpses, and that `/cast !Auto Shot` doesn't toggle Auto Shot off.
+- **Ping cooldown.** `/fp debug` currently reports "out of combat only" (expected on 1.60.1; if a
+  patch adds `GetTime` to the restricted environment it switches to "works in combat" by itself).
+  Spam-click Ping! and the keybind out of combat: one ping per cooldown window. At Off, every click pings. The slider label should read Off / 0.25s / 1s.
 - **Combat.** Inputs lock and Ping! still fires. `/fp`, `/fp reset` and the close button queue
   until combat ends.
 - **Settings page.** Check that Forever Pinging appears under Options → AddOns, that sliders show

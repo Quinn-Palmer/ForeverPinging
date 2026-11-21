@@ -9,6 +9,7 @@ ns.DEFAULTS = {
     dbVersion = ns.DB_VERSION,
     name = "",
     pingType = "default",
+    pingCooldown = 1,   -- seconds Ping! ignores clicks after one goes through; 0 = off
     options = {
         exactMatch = true,
         skipDead = true,
@@ -62,6 +63,7 @@ local function Sanitize(db)
         db.pingType = "default"
     end
     if type(db.name) ~= "string" then db.name = "" end
+    db.pingCooldown = math.min(ns.COOLDOWN_MAX, math.max(0, tonumber(db.pingCooldown) or 1))
     -- Enemies only and Friendlies only are mutually exclusive.
     if db.options.enemiesOnly and db.options.friendliesOnly then
         db.options.friendliesOnly = false
@@ -88,6 +90,7 @@ end
 
 ns.SCALE_MIN, ns.SCALE_MAX, ns.SCALE_STEP = 0.7, 1.5, 0.05
 ns.OPACITY_STEP = 0.05
+ns.COOLDOWN_MAX, ns.COOLDOWN_STEP = 3, 0.25
 
 ---------------------------------------------------------------------------
 -- Combat queue: secure attributes, and showing/moving the frame that holds
@@ -267,6 +270,17 @@ ns.FIELDS = {
         changed = MacroChanged,
         queues = true,
     },
+    pingCooldown = {
+        get = function() return ns.db.pingCooldown end,
+        set = function(v)
+            v = tonumber(v) or 0
+            ns.db.pingCooldown = math.min(ns.COOLDOWN_MAX, math.max(0, v))
+        end,
+        changed = function()
+            ns.RunOutOfCombat("cooldown", function() ns.UI.ApplyCooldown(ns.db.pingCooldown) end)
+        end,
+        queues = true,
+    },
     raidMarker = {
         get = function() return ns.db.options.raidMarker end,
         set = function(v)
@@ -436,6 +450,7 @@ function ns.Reset()
         ns.UI.ApplyAppearance()
         ns.UI.ResetPosition()
         ns.UI.ApplyShown()
+        ns.UI.ApplyCooldown(ns.db.pingCooldown)
         ns.Rebuild()
         if ns.Options then ns.Options.RefreshAll() end
         Print(L.RESET_DONE)
@@ -445,7 +460,17 @@ function ns.Reset()
     end
 end
 
+local function PrintCooldown()
+    local mode = ns.UI.CooldownMode()
+    if mode == "off" then
+        Print(L.DEBUG_COOLDOWN_OFF)
+    elseif mode then
+        Print(L["DEBUG_COOLDOWN_" .. mode:upper()]:format(ns.db.pingCooldown))
+    end
+end
+
 function ns.PrintDebug()
+    PrintCooldown()
     local text = ns.macrotext or ""
     if text == "" then
         Print(L.DEBUG_EMPTY)
@@ -457,6 +482,18 @@ function ns.PrintDebug()
     end
     if ns.Macro.IsTooLong(text) then
         Print(L.TOO_LONG:format(#text, ns.Macro.MAX_LENGTH))
+    end
+
+    -- What Ping! (and the keybind / bar macro, which click it) actually runs.
+    local btn = _G.ForeverPingingPingButton
+    local live = btn and btn:GetAttribute("macrotext") or ""
+    if live == text then
+        Print(L.DEBUG_BUTTON_MATCHES)
+    else
+        Print(L.DEBUG_BUTTON_STALE)
+        for line in live:gmatch("[^\n]+") do
+            print("  " .. line)
+        end
     end
 end
 
@@ -624,6 +661,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
             ns.UI.ApplyShown()
         end)
         ns.UI.SetCombatLocked(InCombatLockdown())
+        ns.RunOutOfCombat("cooldown", function() ns.UI.ApplyCooldown(ns.db.pingCooldown) end)
         ns.Rebuild()
         ns.Options.Register()
 

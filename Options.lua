@@ -76,10 +76,16 @@ local function Percent(value)
     return ("%d%%"):format(math.floor(value * 100 + 0.5))
 end
 
-local function Slider(key, label, default, min, max, step, tooltip)
+local function Seconds(value)
+    if value <= 0 then return L.SET_COOLDOWN_OFF end
+    return (("%.2f"):format(value):gsub("0+$", ""):gsub("%.$", "")) .. "s"
+end
+
+-- format defaults to Percent.
+local function Slider(key, label, default, min, max, step, tooltip, format)
     local options = Settings.CreateSliderOptions(min, max, step)
     if MinimalSliderWithSteppersMixin and options.SetLabelFormatter then
-        options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, Percent)
+        options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, format or Percent)
     end
     Settings.CreateSlider(category, Register(key, label, default), options, tooltip)
 end
@@ -125,6 +131,8 @@ local function Build(layout)
             add(pt.key, L["PING_" .. pt.key])
         end
     end)
+    Slider("pingCooldown", L.SET_COOLDOWN, D.pingCooldown, 0, ns.COOLDOWN_MAX, ns.COOLDOWN_STEP,
+        L.SET_COOLDOWN_TIP, Seconds)
     Dropdown("attack", L.ATTACK, "", L.SET_ATTACK_TIP, function(add)
         add("", L.ATTACK_NONE)
         for _, entry in ipairs(ns.Abilities.ForClass(ns.playerClass)) do

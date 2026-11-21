@@ -62,9 +62,14 @@ function Macro.Build(settings, attackName)
     local lines = {}
     local function add(line) lines[#lines + 1] = line end
 
+    local attack = Macro.CleanName(attackName)
+    local hasAttack = attack ~= "" and attack ~= "!"
+
     -- Targeting by name keeps the old target when nothing matches; clearing
     -- first means a failed search leaves no target, so nothing gets pinged.
-    if o.clearIfNotFound then
+    -- Forced on when there's an attack, or a miss would cast it at whatever
+    -- you had targeted before (macro conditions can't check the unit's name).
+    if o.clearIfNotFound or hasAttack then
         add("/cleartarget")
     end
 
@@ -97,8 +102,7 @@ function Macro.Build(settings, attackName)
     end
 
     -- [harm,nodead] keeps the cast off friendlies, corpses and yourself.
-    local attack = Macro.CleanName(attackName)
-    if attack ~= "" and attack ~= "!" then
+    if hasAttack then
         add("/cast [@target,harm,nodead] " .. attack)
     end
 
